@@ -1,0 +1,45 @@
+/* 引入思源宋体，用于标题 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 自定义一些高级感样式 */
+.font-serif-sc {
+  font-family: 'Noto Serif SC', serif;
+}
+
+/* 隐藏滚动条但允许滚动（为了美观） */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 进度条颜色 */
+#nprogress .bar {
+  background: #1e40af !important; /* 深蓝色 */
+  height: 3px !important;
+}
+
+/* 初始状态：透明且下沉 */
+.reveal-hidden {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); /* 苹果风格的缓动曲线 */
+  will-change: transform, opacity;
+}
+
+/* 激活状态：完全显示且归位 */
+.reveal-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 依次延迟（让并排的卡片一个个出来，更有节奏感） */
+.delay-100 { transition-delay: 100ms; }
+.delay-200 { transition-delay: 200ms; }
+.delay-300 { transition-delay: 300ms; }
