@@ -27,7 +27,10 @@ const submitOrder = async () => {
   try {
     const payload = {
       username: store.currentUser?.username || 'guest',
-      productIds: store.items.map(item => item.id)
+      items: store.items.map(item => ({
+        id: item.id,
+        quantity: item.quantity // 把数量带上
+      }))
     }
 
     const res = await fetch('http://localhost:8080/api/products/order', {
@@ -40,6 +43,10 @@ const submitOrder = async () => {
       const amount = finalPrice.value
       store.clearCart()
       router.push(`/payment-success?amount=${amount}`)
+    } else {
+      // 【新增】如果后端报库存不足，弹窗提示
+      const errorMsg = await res.text()
+      alert('下单失败：' + errorMsg) 
     }
   } catch (e) {
     alert('网络错误')

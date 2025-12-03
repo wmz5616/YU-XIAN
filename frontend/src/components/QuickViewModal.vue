@@ -83,17 +83,21 @@ const goToDetail = () => {
             </div>
 
             <div class="space-y-3">
-              <div class="flex items-center justify-between bg-slate-50 rounded-lg p-1 border border-slate-100">
+              <div class="flex items-center justify-between bg-slate-50 rounded-lg p-1 border border-slate-100" :class="{'opacity-50 pointer-events-none': product.stock <= 0}">
                 <button @click="changeCount(-1)" class="w-8 h-8 flex items-center justify-center hover:bg-white rounded shadow-sm transition" :disabled="buyCount<=1">-</button>
-                <span class="text-sm font-bold w-8 text-center">{{ buyCount }}</span>
+                <span class="text-sm font-bold w-8 text-center">{{ product.stock > 0 ? buyCount : 0 }}</span>
                 <button @click="changeCount(1)" class="w-8 h-8 flex items-center justify-center hover:bg-white rounded shadow-sm transition" :disabled="buyCount>=product.stock">+</button>
               </div>
               
               <button 
                 @click="addToCart"
-                class="w-full py-3 bg-blue-900 text-white rounded-lg font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-800 transition active:scale-95"
+                :disabled="product.stock <= 0"
+                class="w-full py-3 rounded-lg font-bold shadow-lg transition active:scale-95"
+                :class="product.stock > 0 
+                  ? 'bg-blue-900 text-white shadow-blue-900/20 hover:bg-blue-800' 
+                  : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'"
               >
-                加入购物车
+                {{ product.stock > 0 ? '加入购物车' : '暂时缺货' }}
               </button>
             </div>
           </div>

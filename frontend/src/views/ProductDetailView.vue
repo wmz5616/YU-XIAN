@@ -103,6 +103,13 @@ onMounted(async () => {
   } catch (error) { console.error('加载失败', error) }
 })
 
+const getUnit = (name) => {
+  if (name.includes('蟹') || name.includes('龙虾')) return '只'
+  if (name.includes('鲍鱼') || name.includes('生蚝') || name.includes('扇贝')) return '只'
+  if (name.includes('多宝鱼') || name.includes('石斑鱼')) return '条'
+  return '500g' // 默认单位为斤
+}
+
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
 })
@@ -123,17 +130,23 @@ watch(() => route.params.id, () => { window.location.reload() })
             <img :src="product.imageUrl" class="w-10 h-10 rounded-lg object-cover border border-slate-200" />
             <div class="hidden md:block">
               <h4 class="font-bold text-slate-800 text-sm">{{ product.name }}</h4>
-              <span class="text-xs text-blue-600 font-bold">¥{{ product.price }}</span>
+              <span class="text-xs text-blue-600 font-bold">¥{{ product.price }}/{{ getUnit(product.name) }}</span>
             </div>
           </div>
           <div class="flex items-center gap-4">
-            <div class="flex items-center bg-slate-100 rounded-lg h-9">
+            <div class="flex items-center bg-slate-100 rounded-lg h-9" :class="{'opacity-50 pointer-events-none': product.stock <= 0}">
               <button @click="changeCount(-1)" class="w-8 h-full flex items-center justify-center text-slate-500 hover:text-blue-600 disabled:opacity-30" :disabled="buyCount <= 1">-</button>
-              <span class="text-xs font-bold w-6 text-center">{{ buyCount }}</span>
+              <span class="text-xs font-bold w-6 text-center">{{ product.stock > 0 ? buyCount : 0 }}</span>
               <button @click="changeCount(1)" class="w-8 h-full flex items-center justify-center text-slate-500 hover:text-blue-600 disabled:opacity-30" :disabled="buyCount >= product.stock">+</button>
             </div>
-            <button @click="(e) => addToCart(e)" class="bg-blue-900 text-white px-6 py-2 rounded-full text-sm font-bold shadow-md hover:bg-blue-800 transition active:scale-95">
-              立即加购
+            
+            <button 
+              @click="(e) => addToCart(e)" 
+              :disabled="product.stock <= 0"
+              class="px-6 py-2 rounded-full text-sm font-bold shadow-md transition active:scale-95"
+              :class="product.stock > 0 ? 'bg-blue-900 text-white hover:bg-blue-800' : 'bg-slate-300 text-slate-500 cursor-not-allowed'"
+            >
+              {{ product.stock > 0 ? '立即加购' : '缺货' }}
             </button>
           </div>
         </div>
@@ -173,21 +186,32 @@ watch(() => route.params.id, () => { window.location.reload() })
         </div>
         <p class="text-lg text-slate-600 mb-8 leading-relaxed">{{ product.description }}</p>
 
-        <div class="bg-blue-50/50 p-6 rounded-xl border border-blue-100 mb-8">
+       <div class="bg-blue-50/50 p-6 rounded-xl border border-blue-100 mb-8">
           <div class="flex justify-between items-end mb-6">
             <div>
               <span class="block text-sm text-slate-500 mb-1">今日实时价</span>
-              <span class="text-4xl font-bold text-blue-900 font-serif-sc">¥{{ product.price }}</span>
+              <span class="text-4xl font-bold text-blue-900 font-serif-sc">
+  ¥{{ product.price }}<span class="text-lg font-normal text-slate-500 ml-1">/{{ getUnit(product.name) }}</span>
+</span>
             </div>
-            <div class="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm">
-              <button @click="changeCount(-1)" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition" :disabled="buyCount <= 1">-</button>
-              <input type="text" readonly :value="buyCount" class="w-10 text-center font-bold text-slate-800 focus:outline-none bg-transparent" />
-              <button @click="changeCount(1)" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition" :disabled="buyCount >= product.stock">+</button>
+            
+            <div class="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm" :class="{'opacity-50 pointer-events-none': product.stock <= 0}">
+              <button @click="changeCount(-1)" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition" :disabled="buyCount <= 1">-</button>
+              <input type="text" readonly :value="product.stock > 0 ? buyCount : 0" class="w-10 text-center font-bold text-slate-800 focus:outline-none bg-transparent" />
+              <button @click="changeCount(1)" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition" :disabled="buyCount >= product.stock">+</button>
             </div>
           </div>
-          <button @click="(e) => addToCart(e)" class="w-full bg-blue-900 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-800 transition transform active:scale-95 flex items-center justify-center gap-2">
-            <img src="/icons/icon-cart.png" class="w-5 h-5 brightness-200" />
-            <span>立即加购</span>
+
+          <button 
+            @click="(e) => addToCart(e)" 
+            :disabled="product.stock <= 0"
+            class="w-full py-4 rounded-xl font-bold shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2"
+            :class="product.stock > 0 
+              ? 'bg-blue-900 text-white shadow-blue-900/20 hover:bg-blue-800' 
+              : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'"
+          >
+            <img v-if="product.stock > 0" src="/icons/icon-cart.png" class="w-5 h-5 brightness-200" />
+            <span>{{ product.stock > 0 ? '立即加购' : '暂时缺货' }}</span>
           </button>
         </div>
 

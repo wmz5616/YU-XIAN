@@ -6,13 +6,12 @@ import java.util.Map;
 import java.util.Random;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-
 import com.yuxian.backend.entity.OrderRecord;
 import com.yuxian.backend.entity.Product;
 import com.yuxian.backend.repository.ProductRepository;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController // 告诉 Spring 这就是“服务员”
 @RequestMapping("/api/products") // 设定服务窗口的地址
@@ -130,28 +129,51 @@ public class ProductController {
     }
 
     @PostMapping("/order")
+    @Transactional(rollbackFor = Exception.class) // 【关键】开启事务，出错自动回滚
     public String createOrder(@RequestBody Map<String, Object> payload) {
-        // 1. 解析参数
         String username = (String) payload.get("username");
-        List<Integer> ids = (List<Integer>) payload.get("productIds");
         
-        // 转换 ID 类型 (Integer -> Long)
-        List<Long> longIds = ids.stream().map(Integer::longValue).toList();
-        List<Product> products = productRepository.findAllById(longIds);
+        // 解析前端传来的 items 数组: [{"id":1, "quantity":2}, ...]
+        List<Map<String, Object>> items = (List<Map<String, Object>>) payload.get("items");
 
-        // 2. 计算数据
-        double total = products.stream().mapToDouble(Product::getPrice).sum();
-        // 把商品名拼接成字符串，例如 "鲍鱼 x1, 龙虾 x1"
-        String names = products.stream().map(Product::getName).reduce((a, b) -> a + ", " + b).orElse("");
+        double total = 0.0;
+        StringBuilder productNames = new StringBuilder();
 
-        // 3. 【关键】存入数据库
+        for (Map<String, Object> item : items) {
+            Long pid = ((Number) item.get("id")).longValue();
+            int quantity = ((Number) item.get("quantity")).intValue();
+
+            // 1. 查商品
+            Product product = productRepository.findById(pid)
+                    .orElseThrow(() -> new RuntimeException("商品不存在: " + pid));
+
+            // 2. 【关键】查库存
+            if (product.getStock() < quantity) {
+                throw new RuntimeException("商品 " + product.getName() + " 库存不足！剩余: " + product.getStock());
+            }
+
+            // 3. 【关键】扣库存
+            product.setStock(product.getStock() - quantity);
+            productRepository.save(product); // 更新到数据库
+
+            // 4. 算钱
+            total += product.getPrice() * quantity;
+            productNames.append(product.getName()).append(" x").append(quantity).append(", ");
+        }
+
+        // 5. 生成订单
         OrderRecord order = new OrderRecord();
         order.setUsername(username);
+        // 去掉字符串末尾多余的逗号
+        String names = productNames.toString();
+        if (names.length() > 2) {
+            names = names.substring(0, names.length() - 2);
+        }
         order.setProductNames(names);
-        order.setTotalPrice(Double.parseDouble(String.format("%.2f", total))); // 保留两位小数
-        order.setStatus("待发货"); // 默认状态
+        order.setTotalPrice(Double.parseDouble(String.format("%.2f", total)));
+        order.setStatus("待发货");
         order.setCreateTime(java.time.LocalDateTime.now());
-        
+
         orderRepository.save(order);
 
         return "下单成功";
