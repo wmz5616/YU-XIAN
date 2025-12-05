@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import ProductSkeleton from '../components/ProductSkeleton.vue'
 import QuickViewModal from '../components/QuickViewModal.vue'
-import { store } from '../store.js' // 【关键】引入 store 以使用飞入特效
+import { store } from '../store.js' 
 
 const router = useRouter()
 const products = ref([])
@@ -11,11 +11,8 @@ const categories = ['全部', '鱼类', '虾类', '蟹类', '贝类', '头足类
 const currentCategory = ref('全部')
 const searchQuery = ref('')
 const loading = ref(true)
-
-// 弹窗状态
 const showModal = ref(false)
 const selectedProduct = ref(null)
-
 const defaultImage = 'https://images.unsplash.com/photo-1534483852723-e696b0106294?q=80&w=600&auto=format&fit=crop'
 
 const fetchProducts = async () => {
@@ -59,16 +56,14 @@ const goToDetail = (id) => {
   router.push(`/product/${id}`)
 }
 
-// 打开快速预览
 const openQuickView = (product, event) => {
   event.stopPropagation()
   selectedProduct.value = product
   showModal.value = true
 }
 
-// 【新增】首页直接加购（飞入特效）
 const addToCart = (product, event) => {
-  event.stopPropagation() // 阻止跳转详情页
+  event.stopPropagation()
   store.addToCart(product, event)
 }
 

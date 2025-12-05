@@ -7,12 +7,13 @@ const router = useRouter()
 const form = ref({
   username: '',
   password: '',
-  displayName: '' // 昵称
+  displayName: ''
 })
 
 const handleRegister = async () => {
-  if (!form.value.username || !form.value.password) {
-    store.showNotification('请填写完整信息', 'error')
+  const regex = /^[a-z0-9]{1,7}$/
+  if (!regex.test(form.value.username)) {
+    store.showNotification('会员名格式错误：仅限小写字母+数字，最多7位', 'error')
     return
   }
 
@@ -22,12 +23,11 @@ const handleRegister = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form.value)
     })
-    
-    const msg = await res.text() // 后端返回的是字符串 "注册成功" 或 "失败..."
-    
+
+    const msg = await res.text()
     if (msg === '注册成功') {
       store.showNotification('注册成功！请登录', 'success')
-      router.push('/login') // 注册好后去登录页
+      router.push('/login')
     } else {
       store.showNotification(msg, 'error')
     }
@@ -38,38 +38,48 @@ const handleRegister = async () => {
 </script>
 
 <template>
-  <div class="min-h-[80vh] flex items-center justify-center bg-[#F8FAFC] py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
-      <div class="text-center">
+  <div class="min-h-[80vh] flex items-center justify-center bg-[#F8FAFC] py-12 px-4">
+    <div class="max-w-md w-full bg-white p-10 rounded-3xl shadow-xl border border-slate-100">
+      <div class="text-center mb-10">
         <h2 class="text-3xl font-serif-sc font-bold text-slate-900">加入渔鲜会员</h2>
-        <p class="mt-2 text-sm text-slate-600">
-          尊享产地直供特权
-        </p>
+        <p class="mt-2 text-sm text-slate-500">开启您的鲜活之旅</p>
       </div>
-      
-      <form class="mt-8 space-y-5" @submit.prevent="handleRegister">
-        <div class="rounded-md shadow-sm space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">用户名 (登录账号)</label>
-            <input v-model="form.username" type="text" required class="appearance-none rounded-lg block w-full px-3 py-3 border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="例如: yuxian001">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">密码</label>
-            <input v-model="form.password" type="password" required class="appearance-none rounded-lg block w-full px-3 py-3 border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="设置您的密码">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">您的称呼 (昵称)</label>
-            <input v-model="form.displayName" type="text" class="appearance-none rounded-lg block w-full px-3 py-3 border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="例如: 张老板">
-          </div>
+
+      <form class="space-y-6" @submit.prevent="handleRegister">
+
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2">
+            会员名 <span class="text-xs font-normal text-slate-400">(唯一ID)</span>
+          </label>
+          <input v-model="form.username" type="text" required
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition font-mono text-sm"
+            placeholder="例: abc123 (小写字母+数字, ≤7位)">
         </div>
 
-        <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-900 hover:bg-blue-800 transition-all shadow-lg hover:shadow-blue-900/30">
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2">
+            用户名 <span class="text-xs font-normal text-slate-400">(昵称，可重复)</span>
+          </label>
+          <input v-model="form.displayName" type="text"
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition"
+            placeholder="例: 测试1">
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2">密码</label>
+          <input v-model="form.password" type="password" required
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition"
+            placeholder="设置您的登录密码">
+        </div>
+
+        <button type="submit"
+          class="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-blue-900 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
           立即注册
         </button>
-        
+
         <div class="text-center text-sm">
-          <router-link to="/login" class="font-medium text-blue-600 hover:text-blue-500">
-            已有账号？去登录
+          <router-link to="/login" class="text-slate-500 hover:text-blue-600 transition">
+            已有账号？<span class="underline">去登录</span>
           </router-link>
         </div>
       </form>

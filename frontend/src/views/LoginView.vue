@@ -22,12 +22,11 @@ const handleLogin = async () => {
       body: JSON.stringify(form.value)
     })
     
-    // 注意：如果后端返回空字符串或null，res.json()可能会报错，所以要先判断状态
     if (res.ok) {
-      const user = await res.json() // 解析后端返回的用户对象
+      const user = await res.json()
       if (user) {
-        store.login(user) // 存入 store
-        router.push('/')  // 跳转回首页
+        store.login(user) 
+        router.push('/') 
       } else {
         store.showNotification('账号或密码错误', 'error')
       }
@@ -35,7 +34,6 @@ const handleLogin = async () => {
       store.showNotification('登录服务异常', 'error')
     }
   } catch (error) {
-    // 通常这里是因为后端返回 null 导致 json 解析失败，说明登录失败
     store.showNotification('账号或密码错误', 'error')
   }
 }

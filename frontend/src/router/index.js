@@ -56,15 +56,13 @@ const router = createRouter({
   ]
 })
 
-NProgress.configure({ showSpinner: false }) // 去掉右边的转圈圈，只要进度条
+NProgress.configure({ showSpinner: false }) 
 
-// 开始跳转前
 router.beforeEach((to, from, next) => {
   NProgress.start()
   next()
 })
 
-// 跳转结束后
 router.afterEach(() => {
   NProgress.done()
 })

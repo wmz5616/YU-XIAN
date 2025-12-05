@@ -1,13 +1,16 @@
 package com.yuxian.backend.controller;
 
+import com.yuxian.backend.entity.Address;
 import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.UserRepository;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
+import java.util.regex.Pattern;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
-@CrossOrigin // 允许前端跨域访问
+@CrossOrigin
 public class UserController {
 
     private final UserRepository userRepository;
@@ -16,45 +19,50 @@ public class UserController {
         this.userRepository = userRepository;
     }
 
-    // 动作：注册
-    // 地址：POST /api/users/register
     @PostMapping("/register")
     public String register(@RequestBody User user) {
-        // 1. 检查用户名是否已被占用
-        User existing = userRepository.findByUsername(user.getUsername());
-        if (existing != null) {
-            return "注册失败：用户名已存在";
+    
+        String regex = "^[a-z0-9]{1,7}$";
+        if (!Pattern.matches(regex, user.getUsername())) {
+            return "注册失败：用户名必须是小写字母+数字，且不超过7位";
         }
-        
-        // 2. 如果没被占用，就保存到数据库
-        // 如果用户没填昵称，默认昵称就是用户名
-        if (user.getDisplayName() == null) {
-            user.setDisplayName(user.getUsername());
+
+        if (userRepository.findByUsername(user.getUsername()) != null) {
+            return "注册失败：该用户名已被占用";
+        }
+
+        if (user.getDisplayName() == null || user.getDisplayName().isEmpty()) {
+            user.setDisplayName("会员" + user.getUsername());
         }
         
         userRepository.save(user);
         return "注册成功";
     }
 
-    // 动作：登录
-    // 地址：POST /api/users/login
     @PostMapping("/login")
     public User login(@RequestBody User loginUser) {
-        // 1. 根据用户名去数据库查
         User user = userRepository.findByUsername(loginUser.getUsername());
-        
-        // 2. 如果用户不存在，或者密码不对
         if (user == null || !user.getPassword().equals(loginUser.getPassword())) {
-            // 返回 null 表示登录失败 (前端会根据是否为 null 判断)
-            return null; 
+            return null;
         }
-        
-        // 3. 登录成功，返回用户完整信息
         return user;
     }
 
+    @PostMapping("/address")
+    public User updateAddress(@RequestBody User userWithAddress) {
+        User user = userRepository.findByUsername(userWithAddress.getUsername());
+        if (user != null) {
+            user.getAddresses().clear();
+            if (userWithAddress.getAddresses() != null) {
+                user.getAddresses().addAll(userWithAddress.getAddresses());
+            }
+            return userRepository.save(user);
+        }
+        return null;
+    }
+
     @PostMapping("/avatar")
-public User updateAvatar(@RequestBody Map<String, String> payload) {
+    public User updateAvatar(@RequestBody Map<String, String> payload) {
     String username = payload.get("username");
     String avatarBase64 = payload.get("avatar");
 
@@ -62,7 +70,7 @@ public User updateAvatar(@RequestBody Map<String, String> payload) {
     if (user != null) {
         user.setAvatar(avatarBase64);
         userRepository.save(user);
-        return user; // 返回更新后的用户
+        return user;
     }
     return null;
 }

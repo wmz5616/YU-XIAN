@@ -10,10 +10,9 @@ public class OrderRecord {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    private String username;      // 谁买的
-    private String productNames;  // 买了啥 (存成字符串，如 "鲍鱼, 龙虾")
-    private Double totalPrice;    // 总价
-    private String status;        // 状态 (待发货/运输中/已送达)
-    private LocalDateTime createTime; // 下单时间
+    private String username; 
+    private String productNames;
+    private Double totalPrice; 
+    private String status;  
+    private LocalDateTime createTime;
 }

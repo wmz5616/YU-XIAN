@@ -14,7 +14,7 @@ const buyCount = ref(1)
 
 const close = () => {
   emit('close')
-  buyCount.value = 1 // 重置数量
+  buyCount.value = 1
 }
 
 const changeCount = (delta) => {
@@ -39,7 +39,7 @@ const addToCart = () => {
 
 const goToDetail = () => {
   router.push(`/product/${props.product.id}`)
-  close() // 跳转前关闭弹窗
+  close() 
 }
 </script>
 

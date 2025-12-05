@@ -1,8 +1,18 @@
 <script setup>
+import { computed } from 'vue'
 import { store } from '../store.js'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
+const freight = computed(() => {
+  const total = parseFloat(store.totalPrice)
+  return total > 200 ? 0 : 20
+})
+
+const finalPrice = computed(() => {
+  return (parseFloat(store.totalPrice) + freight.value).toFixed(2)
+})
 
 const handleCheckout = () => {
   if (store.items.length === 0) return
