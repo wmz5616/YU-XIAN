@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { store } from '../store.js'
 import * as echarts from 'echarts'
+import { request } from '@/utils/request'
 
 const route = useRoute()
 const router = useRouter()

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import ProductSkeleton from '../components/ProductSkeleton.vue'
 import QuickViewModal from '../components/QuickViewModal.vue'
 import { store } from '../store.js'
+import { request } from '@/utils/request'
 
 const router = useRouter()
 const products = ref([])
@@ -40,24 +41,25 @@ const quickSearch = (keyword) => {
 
 const fetchRecommendations = async () => {
   try {
-    const res = await fetch(`${API_BASE}/api/products/recommend`)
-    if (res.ok) recommendations.value = await res.json()
-  } catch (e) { console.error(e) }
+    const data = await request('/api/products/recommend')
+    recommendations.value = data
+  } catch (e) { 
+    console.error(e)
+  }
 }
 
 const fetchProducts = async () => {
   loading.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 800))
-    let url = `${API_BASE}/api/products`
-    if (searchQuery.value.trim()) {
-      url += `/search?keyword=${searchQuery.value}`
-    } else if (currentCategory.value !== '全部') {
-      url += `/category/${currentCategory.value}`
-    }
-    const res = await fetch(url)
-    products.value = await res.json()
-  } catch (error) { console.error(error) } finally { loading.value = false }
+    const data = await request('/api/products')
+    products.value = data
+    
+  } catch (e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
 }
 
 const getBadge = (product) => {

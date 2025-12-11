@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { store } from '../store.js'
 import { useRouter } from 'vue-router'
+import { request } from '@/utils/request'
 
 const router = useRouter()
 const orders = ref([])
@@ -9,7 +10,6 @@ const showAddressModal = ref(false)
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
 const isLocating = ref(false)
 const searchQuery = ref('')
-const API_BASE = import.meta.env.VITE_API_BASE_URL
 
 onMounted(async () => {
   if (!store.currentUser) {
@@ -19,13 +19,14 @@ onMounted(async () => {
   try {
     const username = store.currentUser.username
 
-    const orderRes = await fetch(`http://localhost:8080/api/products/orders?username=${username}`)
-    orders.value = await orderRes.json()
+    const ordersData = await request(`/api/products/orders?username=${username}`)
+    if (ordersData) {
+      orders.value = ordersData
+    }
 
-    const userRes = await fetch(`http://localhost:8080/api/users/info?username=${username}`)
-    if (userRes.ok) {
-      const freshUser = await userRes.json()
-      store.login(freshUser) 
+    const userData = await request(`/api/users/info?username=${username}`)
+    if (userData) {
+      store.login(userData)
     }
   } catch (error) {
     console.error('数据加载失败', error)
