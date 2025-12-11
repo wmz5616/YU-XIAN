@@ -18,6 +18,7 @@ const defaultImage = 'https://images.unsplash.com/photo-1534483852723-e696b01062
 const isSearchFocused = ref(false)
 const searchHistory = ref(JSON.parse(localStorage.getItem('yuxian_search_history') || '[]'))
 const hotKeywords = ['帝王蟹', '三文鱼', '波士顿龙虾', '生蚝', '大闸蟹']
+const API_BASE = import.meta.env.VITE_API_BASE_URL
 
 const saveHistory = (keyword) => {
   if (!keyword || !keyword.trim()) return
@@ -39,7 +40,7 @@ const quickSearch = (keyword) => {
 
 const fetchRecommendations = async () => {
   try {
-    const res = await fetch('http://localhost:8080/api/products/recommend')
+    const res = await fetch(`${API_BASE}/api/products/recommend`)
     if (res.ok) recommendations.value = await res.json()
   } catch (e) { console.error(e) }
 }
@@ -48,7 +49,7 @@ const fetchProducts = async () => {
   loading.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 800))
-    let url = 'http://localhost:8080/api/products'
+    let url = `${API_BASE}/api/products`
     if (searchQuery.value.trim()) {
       url += `/search?keyword=${searchQuery.value}`
     } else if (currentCategory.value !== '全部') {
@@ -99,54 +100,56 @@ onMounted(() => {
 <template>
   <div class="min-h-screen bg-[#F8FAFC] pb-12" @click="isSearchFocused = false">
 
-    <div class="relative h-[500px] w-full"> 
-      
+    <div class="relative h-[500px] w-full">
+
       <div class="absolute inset-0 overflow-hidden">
-        <img src="https://images.unsplash.com/photo-1559742811-822873691df8?q=80&w=2000&auto=format&fit=crop" 
-             class="w-full h-full object-cover brightness-50 scale-105 hover:scale-100 transition-transform duration-[10s]" />
-        
+        <img src="https://images.unsplash.com/photo-1559742811-822873691df8?q=80&w=2000&auto=format&fit=crop"
+          class="w-full h-full object-cover brightness-50 scale-105 hover:scale-100 transition-transform duration-[10s]" />
+
         <div class="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-black/40"></div>
       </div>
 
       <div class="relative container mx-auto px-6 h-full flex flex-col justify-center items-start text-white pt-20">
-        
-        <span class="inline-block px-3 py-1 mb-4 border border-white/30 rounded-full text-xs tracking-[0.2em] backdrop-blur-sm">
+
+        <span
+          class="inline-block px-3 py-1 mb-4 border border-white/30 rounded-full text-xs tracking-[0.2em] backdrop-blur-sm">
           EST. 2025 · GLOBAL SELECTION
         </span>
-        
+
         <h1 class="text-5xl md:text-7xl font-serif-sc font-bold mb-6 leading-tight drop-shadow-lg">
           臻选<br>全球鲜味
         </h1>
-        
+
         <p class="text-slate-300 max-w-md text-lg font-light leading-relaxed mb-8">
           汇聚世界顶级渔场，<br>将深海的纯净直接送达您的餐桌。
         </p>
-        
+
         <div class="w-full max-w-lg relative group" @click.stop>
-           <img src="/icons/icon-search.png" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-60 z-10" />
-           <input 
-            v-model="searchQuery" 
-            @focus="isSearchFocused = true"
-            @keyup.enter="handleSearch" 
-            type="text" 
-            placeholder="搜索珍稀食材 (如: 帝王蟹)..." 
-            class="w-full pl-12 pr-12 py-4 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white placeholder-slate-300 focus:outline-none focus:bg-white focus:text-slate-900 transition-all shadow-2xl relative z-10"
-          >
+          <img src="/icons/icon-search.png" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-60 z-10" />
+          <input v-model="searchQuery" @focus="isSearchFocused = true" @keyup.enter="handleSearch" type="text"
+            placeholder="搜索珍稀食材 (如: 帝王蟹)..."
+            class="w-full pl-12 pr-12 py-4 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white placeholder-slate-300 focus:outline-none focus:bg-white focus:text-slate-900 transition-all shadow-2xl relative z-10">
           <Transition name="fade">
-            <div v-if="isSearchFocused" class="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 z-50 text-slate-800">
+            <div v-if="isSearchFocused"
+              class="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 z-50 text-slate-800">
               <div v-if="searchHistory.length > 0" class="mb-4">
                 <div class="flex justify-between items-center mb-2">
                   <span class="text-xs font-bold text-slate-400">历史搜索</span>
                   <button @click="clearHistory" class="text-[10px] text-slate-400 hover:text-red-500">清空</button>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                  <span v-for="tag in searchHistory" :key="tag" @click="quickSearch(tag)" class="bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 px-3 py-1 rounded-full text-xs cursor-pointer transition border border-slate-100">{{ tag }}</span>
+                  <span v-for="tag in searchHistory" :key="tag" @click="quickSearch(tag)"
+                    class="bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 px-3 py-1 rounded-full text-xs cursor-pointer transition border border-slate-100">{{
+                    tag }}</span>
                 </div>
               </div>
               <div>
                 <div class="text-xs font-bold text-slate-400 mb-2 flex items-center gap-1"><span>🔥</span> 热门海鲜</div>
                 <div class="flex flex-wrap gap-2">
-                  <span v-for="(tag, i) in hotKeywords" :key="tag" @click="quickSearch(tag)" class="px-3 py-1 rounded-full text-xs cursor-pointer transition border font-medium" :class="i < 2 ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'">{{ tag }}</span>
+                  <span v-for="(tag, i) in hotKeywords" :key="tag" @click="quickSearch(tag)"
+                    class="px-3 py-1 rounded-full text-xs cursor-pointer transition border font-medium"
+                    :class="i < 2 ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'">{{
+                    tag }}</span>
                 </div>
               </div>
             </div>
@@ -187,7 +190,7 @@ onMounted(() => {
       <div class="container mx-auto px-4 py-4 overflow-x-auto no-scrollbar flex items-center gap-4">
         <button v-for="cat in categories" :key="cat" @click="setCategory(cat)"
           :class="['flex-shrink-0 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 border', currentCategory === cat ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-900']">{{
-          cat }}</button>
+            cat }}</button>
       </div>
     </div>
 

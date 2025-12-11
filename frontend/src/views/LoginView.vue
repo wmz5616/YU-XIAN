@@ -9,6 +9,8 @@ const form = ref({
   password: ''
 })
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL
+
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
     store.showNotification('请输入账号和密码', 'error')
@@ -16,7 +18,7 @@ const handleLogin = async () => {
   }
 
   try {
-    const res = await fetch('http://localhost:8080/api/users/login', {
+    const res = await fetch(`${API_BASE}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form.value)

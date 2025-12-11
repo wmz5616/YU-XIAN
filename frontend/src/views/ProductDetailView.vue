@@ -15,6 +15,7 @@ const buyCount = ref(1)
 const showStickyBar = ref(false)
 const isAdding = ref(false)
 const originalPrice = computed(() => product.value ? (product.value.price * 1.2).toFixed(2) : 0)
+const API_BASE = import.meta.env.VITE_API_BASE_URL
 
 const stockColor = computed(() => {
   if (!product.value) return ''
@@ -96,7 +97,7 @@ const addToCart = (event) => {
 
 const fetchRelated = async (category, currentId) => {
   try {
-    const res = await fetch(`http://localhost:8080/api/products/category/${category}`)
+    const res = await fetch(`${API_BASE}/api/products/category/${category}`)
     const list = await res.json()
     relatedProducts.value = list.filter(p => p.id !== parseInt(currentId)).slice(0, 4)
   } catch (e) { console.error(e) }

@@ -9,6 +9,7 @@ const showAddressModal = ref(false)
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
 const isLocating = ref(false)
 const searchQuery = ref('')
+const API_BASE = import.meta.env.VITE_API_BASE_URL
 
 onMounted(async () => {
   if (!store.currentUser) {

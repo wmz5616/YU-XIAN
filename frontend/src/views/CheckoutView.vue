@@ -10,6 +10,7 @@ const showAddressModal = ref(false)
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
 const isLocating = ref(false)
 const myAddresses = computed(() => store.currentUser?.addresses || [])
+const API_BASE = import.meta.env.VITE_API_BASE_URL
 
 onMounted(() => {
   if (!store.currentUser) {
@@ -69,7 +70,7 @@ const saveAddress = async () => {
   const updatedAddresses = [...myAddresses.value, { ...newAddress.value, isDefault: isFirst }]
   
   try {
-    const res = await fetch('http://localhost:8080/api/users/address', {
+    const res = await fetch(`${API_BASE}/api/users/address`, {
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
@@ -118,7 +119,7 @@ const submitOrder = async () => {
   }
 
   try {
-    const res = await fetch('http://localhost:8080/api/products/order', {
+    const res = await fetch(`${API_BASE}/api/products/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

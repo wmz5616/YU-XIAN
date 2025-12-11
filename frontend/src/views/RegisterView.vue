@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '../store.js'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL
 const router = useRouter()
 const form = ref({
   username: '',
@@ -18,7 +19,7 @@ const handleRegister = async () => {
   }
 
   try {
-    const res = await fetch('http://localhost:8080/api/users/register', {
+    const res = await fetch(`${API_BASE}/api/users/register`,{
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form.value)
