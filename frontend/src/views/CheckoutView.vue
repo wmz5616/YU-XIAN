@@ -24,35 +24,73 @@ onMounted(() => {
 })
 
 const locateUser = () => {
-  if (typeof AMap === 'undefined') { store.showNotification('地图加载中...', 'error'); return }
+  if (typeof AMap === 'undefined') {
+    store.showNotification('地图加载中...请检查网络', 'error')
+    return
+  }
+  
   isLocating.value = true
+  store.showNotification('正在调用高德定位...')
+  
   AMap.plugin('AMap.Geolocation', function() {
-    const geolocation = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000, needAddress: true, extensions: 'all' })
+    const geolocation = new AMap.Geolocation({
+      enableHighAccuracy: true,
+      timeout: 10000,
+      needAddress: true, 
+      extensions: 'all' 
+    })
+
     geolocation.getCurrentPosition(function(status, result) {
       isLocating.value = false
-      if (status === 'complete') { newAddress.value.detail = result.formattedAddress; store.showNotification('定位成功') }
-      else { store.showNotification('定位失败', 'error') }
+      console.log('定位结果:', status, result)
+
+      if (status === 'complete') {
+        newAddress.value.detail = result.formattedAddress
+        store.showNotification('定位成功')
+      } else {
+        const errorMsg = result.message || '权限被拒绝或Key无效'
+        store.showNotification('定位失败: ' + errorMsg, 'error')
+        
+        if(confirm('定位失败（可能是浏览器限制）。是否填入测试地址？')) {
+           newAddress.value.detail = "浙江省舟山市普陀区沈家门渔港路88号"
+        }
+      }
     })
   })
 }
 
 const saveAddress = async () => {
-  if (!newAddress.value.contact || !newAddress.value.phone || !newAddress.value.detail) { store.showNotification('请填写完整信息', 'error'); return }
+  if (!newAddress.value.contact || !newAddress.value.phone || !newAddress.value.detail) { 
+    store.showNotification('请填写完整信息', 'error')
+    return 
+  }
+  
   const isFirst = myAddresses.value.length === 0
   const updatedAddresses = [...myAddresses.value, { ...newAddress.value, isDefault: isFirst }]
+  
   try {
     const res = await fetch('http://localhost:8080/api/users/address', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
     })
+
     if (res.ok) {
       store.login(await res.json())
       showAddressModal.value = false
       newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
-      if (isFirst) selectedAddressId.value = store.currentUser.addresses[0].id
+      if (isFirst && store.currentUser.addresses.length > 0) {
+          selectedAddressId.value = store.currentUser.addresses[0].id
+      }
       store.showNotification('地址添加成功')
+    } else {
+      const errorText = await res.text() 
+      store.showNotification('保存失败: ' + errorText, 'error')
     }
-  } catch (e) { store.showNotification('保存失败', 'error') }
+  } catch (e) { 
+    console.error(e)
+    store.showNotification('网络连接错误', 'error') 
+  }
 }
 
 const freight = computed(() => store.totalPrice > 200 ? 0 : 20)

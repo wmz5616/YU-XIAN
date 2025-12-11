@@ -7,6 +7,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.Map;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/users")
@@ -21,7 +24,7 @@ public class UserController {
 
     @PostMapping("/register")
     public String register(@RequestBody User user) {
-    
+
         String regex = "^[a-z0-9]{1,7}$";
         if (!Pattern.matches(regex, user.getUsername())) {
             return "注册失败：用户名必须是小写字母+数字，且不超过7位";
@@ -34,7 +37,7 @@ public class UserController {
         if (user.getDisplayName() == null || user.getDisplayName().isEmpty()) {
             user.setDisplayName("会员" + user.getUsername());
         }
-        
+
         userRepository.save(user);
         return "注册成功";
     }
@@ -49,29 +52,36 @@ public class UserController {
     }
 
     @PostMapping("/address")
-    public User updateAddress(@RequestBody User userWithAddress) {
+    @Transactional
+    public ResponseEntity<?> updateAddress(@RequestBody User userWithAddress) {
         User user = userRepository.findByUsername(userWithAddress.getUsername());
         if (user != null) {
             user.getAddresses().clear();
             if (userWithAddress.getAddresses() != null) {
                 user.getAddresses().addAll(userWithAddress.getAddresses());
             }
-            return userRepository.save(user);
+            User savedUser = userRepository.save(user);
+            return ResponseEntity.ok(savedUser);
         }
-        return null;
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在，请重新登录");
     }
 
     @PostMapping("/avatar")
     public User updateAvatar(@RequestBody Map<String, String> payload) {
-    String username = payload.get("username");
-    String avatarBase64 = payload.get("avatar");
+        String username = payload.get("username");
+        String avatarBase64 = payload.get("avatar");
 
-    User user = userRepository.findByUsername(username);
-    if (user != null) {
-        user.setAvatar(avatarBase64);
-        userRepository.save(user);
-        return user;
+        User user = userRepository.findByUsername(username);
+        if (user != null) {
+            user.setAvatar(avatarBase64);
+            userRepository.save(user);
+            return user;
+        }
+        return null;
     }
-    return null;
-}
+
+    @GetMapping("/info")
+    public User getUserInfo(@RequestParam String username) {
+        return userRepository.findByUsername(username);
+    }
 }

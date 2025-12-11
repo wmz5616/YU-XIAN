@@ -8,7 +8,10 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import com.yuxian.backend.entity.OrderRecord;
 import com.yuxian.backend.entity.Product;
+import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.ProductRepository;
+import com.yuxian.backend.repository.UserRepository;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +23,14 @@ public class ProductController {
 
     private final ProductRepository productRepository;
     private final com.yuxian.backend.repository.OrderRepository orderRepository;
+    private final UserRepository userRepository;
 
     public ProductController(ProductRepository productRepository, 
-                             com.yuxian.backend.repository.OrderRepository orderRepository) {
+                             com.yuxian.backend.repository.OrderRepository orderRepository,
+                             UserRepository userRepository) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
+        this.userRepository = userRepository;
     }
 
     @GetMapping
@@ -104,6 +110,12 @@ public class ProductController {
         return result;
     }
 
+    @DeleteMapping("/order/{id}")
+    public String deleteOrder(@PathVariable Long id) {
+        orderRepository.deleteById(id);
+        return "订单已删除";
+    }
+
     private Map<String, Object> createTraceEvent(String time, String title, String desc) {
         Map<String, Object> event = new HashMap<>();
         event.put("time", time);
@@ -159,8 +171,41 @@ public class ProductController {
         return "下单成功";
     }
 
+    @PostMapping("/order/{id}/receive")
+    @Transactional
+    public ResponseEntity<?> confirmReceipt(@PathVariable Long id) {
+        OrderRecord order = orderRepository.findById(id).orElse(null);
+        if (order == null) {
+            return ResponseEntity.badRequest().body("订单不存在");
+        }
+
+        if ("已送达".equals(order.getStatus())) {
+            return ResponseEntity.badRequest().body("订单已完成，请勿重复操作");
+        }
+
+        order.setStatus("已送达");
+        orderRepository.save(order);
+
+        int pointsToAdd = order.getTotalPrice().intValue();
+
+        User user = userRepository.findByUsername(order.getUsername());
+        if (user != null) {
+            if (user.getPoints() == null) user.setPoints(0);
+            user.setPoints(user.getPoints() + pointsToAdd);
+            userRepository.save(user);
+            return ResponseEntity.ok(user);
+        }
+
+        return ResponseEntity.ok("操作成功，但未找到用户");
+    }
+    
     @GetMapping("/orders")
     public java.util.List<OrderRecord> getMyOrders(@RequestParam String username) {
         return orderRepository.findByUsernameOrderByCreateTimeDesc(username);
+    }
+
+    @GetMapping("/recommend")
+    public List<Product> getDailyRecommendations() {
+        return productRepository.findRandomRecommendations();
     }
 }

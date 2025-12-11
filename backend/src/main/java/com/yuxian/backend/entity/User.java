@@ -27,4 +27,6 @@ public class User {
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id")
     private List<Address> addresses;
+
+    private Integer points = 0;
 }

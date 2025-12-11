@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { store } from '../store.js'
 import { useRouter } from 'vue-router'
 
@@ -8,6 +8,7 @@ const orders = ref([])
 const showAddressModal = ref(false)
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
 const isLocating = ref(false)
+const searchQuery = ref('')
 
 onMounted(async () => {
   if (!store.currentUser) {
@@ -15,12 +16,81 @@ onMounted(async () => {
     return
   }
   try {
-    const res = await fetch(`http://localhost:8080/api/products/orders?username=${store.currentUser.username}`)
-    orders.value = await res.json()
+    const username = store.currentUser.username
+
+    const orderRes = await fetch(`http://localhost:8080/api/products/orders?username=${username}`)
+    orders.value = await orderRes.json()
+
+    const userRes = await fetch(`http://localhost:8080/api/users/info?username=${username}`)
+    if (userRes.ok) {
+      const freshUser = await userRes.json()
+      store.login(freshUser) 
+    }
   } catch (error) {
-    console.error('获取订单失败', error)
+    console.error('数据加载失败', error)
   }
 })
+
+const filteredOrders = computed(() => {
+  if (!searchQuery.value) return orders.value
+  const query = searchQuery.value.toLowerCase()
+  return orders.value.filter(order => {
+    const displayId = (20250000 + order.id).toString()
+    return displayId.includes(query) || order.productNames.toLowerCase().includes(query)
+  })
+})
+
+const buyAgain = (productNames) => {
+  const firstProductName = productNames.split('x')[0].replace(/[,，]/g, '').trim()
+  router.push({ path: '/', query: { keyword: firstProductName } })
+}
+
+const applyRefund = () => {
+  alert('售后服务通道正在维护中，请联系客服：400-888-6666')
+}
+
+const confirmReceipt = async (order) => {
+  if (!confirm(`确认收到货了吗？\n确认后将获得 ${Math.floor(order.totalPrice)} 积分！`)) return
+
+  try {
+    const res = await fetch(`http://localhost:8080/api/products/order/${order.id}/receive`, {
+      method: 'POST'
+    })
+
+    if (res.ok) {
+      const updatedUser = await res.json()
+      store.login(updatedUser)
+      order.status = '已送达'
+      store.showNotification(`交易完成！积分 +${Math.floor(order.totalPrice)}`)
+    } else {
+      const err = await res.text()
+      store.showNotification(err, 'error')
+    }
+  } catch (e) {
+    store.showNotification('操作失败', 'error')
+  }
+}
+
+const deleteOrder = async (orderId) => {
+  if (!confirm('确定删除此订单吗？删除后不可恢复。')) return
+
+  try {
+    const res = await fetch(`http://localhost:8080/api/products/order/${orderId}`, {
+      method: 'DELETE'
+    })
+
+    if (res.ok) {
+      store.showNotification('订单已删除')
+      orders.value = orders.value.filter(o => o.id !== orderId)
+    } else {
+      orders.value = orders.value.filter(o => o.id !== orderId)
+      store.showNotification('订单已移除 (演示)')
+    }
+  } catch (e) {
+    console.error(e)
+    store.showNotification('删除失败', 'error')
+  }
+}
 
 const locateUser = () => {
   if (typeof AMap === 'undefined') {
@@ -35,29 +105,16 @@ const locateUser = () => {
     const geolocation = new AMap.Geolocation({
       enableHighAccuracy: true,
       timeout: 10000,
-      needAddress: true, 
+      needAddress: true,
       extensions: 'all'
     })
 
     geolocation.getCurrentPosition(function (status, result) {
       isLocating.value = false
-      console.log('高德定位结果:', status, result)
-
       if (status === 'complete') {
-        let address = result.formattedAddress
-
-        if (!address || address.length === 0) {
-          const comp = result.addressComponent
-          if (comp) {
-            address = `${comp.province}${comp.city}${comp.district}${comp.street || ''}${comp.streetNumber || ''}`
-          } else {
-            address = `当前位置 (经度:${result.position.lng}, 纬度:${result.position.lat})`
-          }
-        }
-        newAddress.value.detail = address
+        newAddress.value.detail = result.formattedAddress
         store.showNotification('定位成功')
       } else {
-        console.error('定位失败原因:', result)
         store.showNotification('定位失败：' + (result.message || '权限被拒绝或超时'), 'error')
       }
     })
@@ -132,7 +189,6 @@ const formatDate = (isoString) => {
 
 const getProductImage = (nameStr) => {
   if (!nameStr) return '/images/default.jpg'
-  
   // 贝类
   if (nameStr.includes('象拔蚌')) return '/images/xiangbabang.jpg'
   if (nameStr.includes('鲍鱼')) return '/images/baoyu.jpg'
@@ -153,7 +209,6 @@ const getProductImage = (nameStr) => {
   if (nameStr.includes('泥螺')) return '/images/niluo.jpg'
   if (nameStr.includes('日月贝')) return '/images/riyuebei.jpg'
   if (nameStr.includes('鸟蛤')) return '/images/niaoge.jpg'
-
   // 虾类
   if (nameStr.includes('波士顿龙虾')) return '/images/boshidunlongxia.jpg'
   if (nameStr.includes('澳洲龙虾')) return '/images/aozhoulongxia.jpg'
@@ -175,7 +230,6 @@ const getProductImage = (nameStr) => {
   if (nameStr.includes('草虾')) return '/images/caoxia.jpg'
   if (nameStr.includes('红虾')) return '/images/hongxia.jpg'
   if (nameStr.includes('北极甜虾')) return '/images/beijitianxia.jpg'
-
   // 蟹类
   if (nameStr.includes('帝王蟹')) return '/images/diwangxie.jpg'
   if (nameStr.includes('大闸蟹')) return '/images/dazhaxie.jpg'
@@ -197,7 +251,6 @@ const getProductImage = (nameStr) => {
   if (nameStr.includes('和乐蟹')) return '/images/helexie.jpg'
   if (nameStr.includes('远海梭子蟹')) return '/images/yuanhaisuozixie.jpg'
   if (nameStr.includes('潮汕青蟹')) return '/images/chaoshanqingxie.jpg'
-
   // 鱼类
   if (nameStr.includes('三文鱼') || nameStr.includes('虹鳟')) return '/images/sanwenyu.jpg'
   if (nameStr.includes('石斑鱼')) return '/images/shibanyu.jpg'
@@ -219,7 +272,6 @@ const getProductImage = (nameStr) => {
   if (nameStr.includes('偏口鱼')) return '/images/piankouyu.jpg'
   if (nameStr.includes('武昌鱼')) return '/images/wuchangyu.jpg'
   if (nameStr.includes('金鲳鱼')) return '/images/jinchangyu.jpg'
-
   // 头足类
   if (nameStr.includes('北太平洋巨型章鱼')) return '/images/beitaipingyangjuxingzhangyu.jpg'
   if (nameStr.includes('鱿鱼') && !nameStr.includes('赤') && !nameStr.includes('阿根廷')) return '/images/youyu.jpg'
@@ -241,7 +293,6 @@ const getProductImage = (nameStr) => {
   if (nameStr.includes('目斗鱼')) return '/images/mudouyu.jpg'
   if (nameStr.includes('长蛸')) return '/images/changshao.jpg'
   if (nameStr.includes('八腕总目')) return '/images/bawan.jpg'
-
   return '/images/default.jpg'
 }
 const handleAvatarUpload = async (event) => {
@@ -369,7 +420,7 @@ const handleAvatarUpload = async (event) => {
                 <div class="text-xs text-slate-400">优惠券</div>
               </div>
               <div class="text-center">
-                <div class="text-lg font-bold text-slate-800">0</div>
+                <div class="text-lg font-bold text-slate-800">{{ store.currentUser?.points || 0 }}</div>
                 <div class="text-xs text-slate-400">积分</div>
               </div>
             </div>
@@ -416,16 +467,27 @@ const handleAvatarUpload = async (event) => {
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-xl font-bold text-slate-800">我的订单记录</h2>
           <div class="flex gap-2">
-            <input type="text" placeholder="搜索订单号/商品..."
+            <input v-model="searchQuery" type="text" placeholder="搜索订单号/商品..."
               class="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-blue-500 transition">
           </div>
         </div>
-        <div v-if="orders.length > 0" class="space-y-5">
-          <div v-for="order in orders" :key="order.id"
-            class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg transition-all duration-300">
+        <div v-if="filteredOrders.length > 0" class="space-y-5">
+          <div v-for="order in filteredOrders" :key="order.id"
+            class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg transition-all duration-300 relative group">
+
+            <button @click="deleteOrder(order.id)"
+              class="absolute top-2 right-2 z-10 text-slate-400 hover:text-red-600 transition p-1.5 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100"
+              title="删除订单">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+
             <div class="flex justify-between items-center pb-4 border-b border-slate-50 mb-4">
               <span class="text-xs font-mono text-slate-400">Order #{{ 20250000 + order.id }}</span>
-              <div class="flex items-center gap-3">
+              <div class="flex items-center gap-3 pr-6">
                 <span class="text-xs text-slate-400">{{ formatDate(order.createTime) }}</span>
                 <span :class="`px-2.5 py-0.5 text-xs font-bold rounded border ${getStatusStyle(order.status)}`">
                   {{ order.status }}
@@ -444,9 +506,12 @@ const handleAvatarUpload = async (event) => {
                 <div class="flex justify-between items-end">
                   <span class="text-lg font-bold text-slate-900 font-serif-sc">¥{{ order.totalPrice }}</span>
                   <div class="flex gap-2">
-                    <button
+                    <button v-if="order.status !== '已送达'" @click="confirmReceipt(order)"
+                      class="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs hover:bg-green-700 transition shadow-md shadow-green-600/20">确认收货</button>
+
+                    <button @click="applyRefund"
                       class="px-3 py-1.5 border border-slate-200 rounded-md text-xs text-slate-600 hover:bg-slate-50 transition">申请售后</button>
-                    <button
+                    <button @click="buyAgain(order.productNames)"
                       class="px-3 py-1.5 bg-blue-900 text-white rounded-md text-xs hover:bg-blue-800 transition shadow-md shadow-blue-900/10">再来一单</button>
                   </div>
                 </div>
@@ -459,8 +524,8 @@ const handleAvatarUpload = async (event) => {
           <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
             <img src="/icons/empty-order.png" class="w-10 h-10 opacity-40 grayscale" />
           </div>
-          <h3 class="font-bold text-slate-800 mb-1">暂无订单</h3>
-          <p class="text-sm text-slate-400 mb-6">快去挑选您心仪的海鲜吧</p>
+          <h3 class="font-bold text-slate-800 mb-1">{{ searchQuery ? '未找到相关订单' : '暂无订单' }}</h3>
+          <p class="text-sm text-slate-400 mb-6">{{ searchQuery ? '换个关键词试试？' : '快去挑选您心仪的海鲜吧' }}</p>
           <button @click="router.push('/')"
             class="px-6 py-2 bg-slate-900 text-white text-sm rounded-full hover:bg-slate-800 transition">去逛逛</button>
         </div>
