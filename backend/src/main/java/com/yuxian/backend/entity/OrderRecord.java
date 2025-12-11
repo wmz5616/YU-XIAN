@@ -19,4 +19,8 @@ public class OrderRecord {
     private Double totalPrice; 
     private String status;  
     private LocalDateTime createTime;
+    public void setProductNames(String names) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'setProductNames'");
+    }
 }

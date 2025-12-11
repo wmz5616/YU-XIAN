@@ -43,6 +43,10 @@ const filteredOrders = computed(() => {
 })
 
 const buyAgain = (productNames) => {
+  if (!productNames) {
+    store.showNotification('该历史订单数据不完整，无法自动加购', 'error')
+    return
+  }
   const firstProductName = productNames.split('x')[0].replace(/[,，]/g, '').trim()
   router.push({ path: '/', query: { keyword: firstProductName } })
 }

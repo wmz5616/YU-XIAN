@@ -32,6 +32,8 @@ public class OrderServiceImpl implements OrderService {
         
         List<OrderItem> orderItems = new ArrayList<>();
 
+        StringBuilder namesBuilder = new StringBuilder();
+
         for (Map<String, Object> payload : itemPayloads) {
             Long pid = Long.valueOf(payload.get("id").toString());
             int quantity = Integer.parseInt(payload.get("quantity").toString());
@@ -58,9 +60,16 @@ public class OrderServiceImpl implements OrderService {
             
             orderItems.add(item);
             total += product.getPrice() * quantity;
-        }
 
-        // 运费逻辑
+            namesBuilder.append(product.getName()).append(" x").append(quantity).append(", ");
+        }
+        String names = namesBuilder.toString();
+
+        if (names.length() > 2) {
+            names = names.substring(0, names.length() - 2);
+        }
+        order.setProductNames(names);
+
         if (total <= 200.0) {
             total += 20.0;
         }
