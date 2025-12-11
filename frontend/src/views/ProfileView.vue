@@ -55,19 +55,14 @@ const confirmReceipt = async (order) => {
   if (!confirm(`确认收到货了吗？\n确认后将获得 ${Math.floor(order.totalPrice)} 积分！`)) return
 
   try {
-    const res = await fetch(`http://localhost:8080/api/products/order/${order.id}/receive`, {
+    const updatedUser = await request(`/api/products/order/${order.id}/receive`, {
       method: 'POST'
     })
 
-    if (res.ok) {
-      const updatedUser = await res.json()
-      store.login(updatedUser)
-      order.status = '已送达'
-      store.showNotification(`交易完成！积分 +${Math.floor(order.totalPrice)}`)
-    } else {
-      const err = await res.text()
-      store.showNotification(err, 'error')
-    }
+    store.login(updatedUser)
+    order.status = '已送达'
+    store.showNotification(`交易完成！积分 +${Math.floor(order.totalPrice)}`)
+
   } catch (e) {
     store.showNotification('操作失败', 'error')
   }
@@ -77,17 +72,13 @@ const deleteOrder = async (orderId) => {
   if (!confirm('确定删除此订单吗？删除后不可恢复。')) return
 
   try {
-    const res = await fetch(`http://localhost:8080/api/products/order/${orderId}`, {
+    await request(`/api/products/order/${orderId}`, {
       method: 'DELETE'
     })
 
-    if (res.ok) {
-      store.showNotification('订单已删除')
-      orders.value = orders.value.filter(o => o.id !== orderId)
-    } else {
-      orders.value = orders.value.filter(o => o.id !== orderId)
-      store.showNotification('订单已移除 (演示)')
-    }
+    store.showNotification('订单已删除')
+    orders.value = orders.value.filter(o => o.id !== orderId)
+
   } catch (e) {
     console.error(e)
     store.showNotification('删除失败', 'error')
@@ -134,22 +125,19 @@ const saveAddress = async () => {
   const updatedAddresses = [...currentAddresses, { ...newAddress.value, isDefault }]
 
   try {
-    const res = await fetch('http://localhost:8080/api/users/address', {
+    const updatedUser = await request('/api/users/address', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         username: store.currentUser.username,
         addresses: updatedAddresses
       })
     })
 
-    if (res.ok) {
-      const updatedUser = await res.json()
-      store.login(updatedUser)
-      showAddressModal.value = false
-      newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
-      store.showNotification('地址添加成功')
-    }
+    store.login(updatedUser)
+    showAddressModal.value = false
+    newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
+    store.showNotification('地址添加成功')
+
   } catch (e) {
     store.showNotification('保存失败', 'error')
   }
@@ -161,15 +149,13 @@ const removeAddress = async (index) => {
   updatedAddresses.splice(index, 1)
 
   try {
-    const res = await fetch('http://localhost:8080/api/users/address', {
+    const updatedUser = await request('/api/users/address', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
     })
-    if (res.ok) {
-      store.login(await res.json())
-      store.showNotification('地址已删除')
-    }
+    store.login(updatedUser)
+    store.showNotification('地址已删除')
+
   } catch (e) { store.showNotification('删除失败', 'error') }
 }
 

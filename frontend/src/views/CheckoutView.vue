@@ -70,27 +70,21 @@ const saveAddress = async () => {
   const updatedAddresses = [...myAddresses.value, { ...newAddress.value, isDefault: isFirst }]
 
   try {
-    const res = await fetch(`${API_BASE}/api/users/address`, {
+    const updatedUser = await request('/api/users/address', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
     })
 
-    if (res.ok) {
-      store.login(await res.json())
-      showAddressModal.value = false
-      newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
-      if (isFirst && store.currentUser.addresses.length > 0) {
-        selectedAddressId.value = store.currentUser.addresses[0].id
-      }
-      store.showNotification('地址添加成功')
-    } else {
-      const errorText = await res.text()
-      store.showNotification('保存失败: ' + errorText, 'error')
+    store.login(updatedUser)
+    showAddressModal.value = false
+    newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
+    if (isFirst && store.currentUser.addresses.length > 0) {
+      selectedAddressId.value = store.currentUser.addresses[0].id
     }
+    store.showNotification('地址添加成功')
   } catch (e) {
     console.error(e)
-    store.showNotification('网络连接错误', 'error')
+    store.showNotification('保存失败，请检查网络', 'error')
   }
 }
 
@@ -119,29 +113,23 @@ const submitOrder = async () => {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/products/order`, {
+
+    const res = await request('/api/products/order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
 
-    if (res.ok) {
-      const amountToPay = finalPrice.value
-      store.clearCart()
-      router.push({
-        path: '/payment-success',
-        query: {
-          amount: amountToPay,
-          method: paymentMethod.value
-        }
-      })
-    } else {
-      const errorText = await res.text()
-      store.showNotification('下单失败：' + errorText, 'error')
-    }
+    store.clearCart()
+    router.push({
+      path: '/payment-success',
+      query: {
+        amount: finalPrice.value,
+        method: paymentMethod.value
+      }
+    })
   } catch (e) {
     console.error(e)
-    store.showNotification('网络错误', 'error')
+    store.showNotification('下单失败：库存不足或网络错误', 'error')
   }
 }
 
@@ -172,8 +160,10 @@ const getTagColor = (tag) => {
               class="input-field resize-none h-24 pt-3"></textarea>
           </div>
           <div class="flex gap-3">
-            <button @click="newAddress.tag = '家'" :class="`tag-btn ${newAddress.tag === '家' ? 'active' : ''}`">🏠 家</button>
-            <button @click="newAddress.tag = '公司'" :class="`tag-btn ${newAddress.tag === '公司' ? 'active' : ''}`">🏢 公司</button>
+            <button @click="newAddress.tag = '家'" :class="`tag-btn ${newAddress.tag === '家' ? 'active' : ''}`">🏠
+              家</button>
+            <button @click="newAddress.tag = '公司'" :class="`tag-btn ${newAddress.tag === '公司' ? 'active' : ''}`">🏢
+              公司</button>
           </div>
         </div>
         <div class="mt-8 flex gap-4">
@@ -213,7 +203,7 @@ const getTagColor = (tag) => {
                 <div class="flex items-center gap-2">
                   <span class="font-bold text-slate-800 text-lg">{{ addr.contact }}</span>
                   <span :class="`px-2 py-0.5 rounded text-[10px] font-bold ${getTagColor(addr.tag)}`">{{ addr.tag
-                    }}</span>
+                  }}</span>
                 </div>
                 <span class="text-slate-400 text-sm font-mono">{{ addr.phone }}</span>
               </div>

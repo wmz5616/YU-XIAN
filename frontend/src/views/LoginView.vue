@@ -23,15 +23,17 @@ const handleLogin = async () => {
       body: JSON.stringify(form.value)
     })
 
-    if (user) {
-      store.setUser(user)
-      store.showNotification('登录成功！', 'success')
-      router.push('/')
-    } else {
-      store.showNotification('用户名或密码错误', 'error')
-    }
+    store.login(user)
+    store.showNotification('登录成功！', 'success')
+    router.push('/')
+
   } catch (error) {
-    store.showNotification('登录服务异常，请检查后端', 'error')
+    console.error(error)
+    if (error.message && error.message.includes('401')) {
+       store.showNotification('用户名或密码错误', 'error')
+    } else {
+       store.showNotification('登录服务异常，请检查后端', 'error')
+    }
   }
 }
 </script>

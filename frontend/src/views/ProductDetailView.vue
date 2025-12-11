@@ -108,13 +108,11 @@ onMounted(async () => {
   window.addEventListener('scroll', handleScroll)
   try {
     const id = route.params.id
-    const res = await fetch(`http://localhost:8080/api/products/${id}`)
-    product.value = await res.json()
-
+    const productData = await request(`/api/products/${id}`)
+    product.value = productData
     fetchRelated(product.value.category, id)
-
-    const insightRes = await fetch(`http://localhost:8080/api/products/${id}/insight`)
-    insightData.value = await insightRes.json()
+    const insightResData = await request(`/api/products/${id}/insight`)
+    insightData.value = insightResData
 
     nextTick(() => { initChart() })
   } catch (error) { console.error('加载失败', error) }
@@ -214,7 +212,7 @@ watch(() => route.params.id, () => { window.location.reload() })
               <span class="block text-sm text-slate-500 mb-1">今日实时价</span>
               <span class="text-4xl font-bold text-blue-900 font-serif-sc">
                 ¥{{ product.price }}<span class="text-lg font-normal text-slate-500 ml-1">/{{ getUnit(product.name)
-                  }}</span>
+                }}</span>
               </span>
             </div>
 

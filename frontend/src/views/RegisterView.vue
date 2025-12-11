@@ -25,12 +25,11 @@ const handleRegister = async () => {
       body: JSON.stringify(form.value)
     })
 
-    const msg = await res.text()
-    if (msg === '注册成功') {
-      store.showNotification('注册成功！请登录', 'success')
+    if (data.success) {
+      store.showNotification(data.message, 'success')
       router.push('/login')
     } else {
-      store.showNotification(msg, 'error')
+      store.showNotification(data.message || '注册失败', 'error')
     }
   } catch (error) {
     store.showNotification('注册服务异常', 'error')

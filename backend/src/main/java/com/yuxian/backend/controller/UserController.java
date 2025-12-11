@@ -4,12 +4,14 @@ import com.yuxian.backend.entity.Address;
 import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.UserRepository;
 import org.springframework.web.bind.annotation.*;
+import java.util.HashMap;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.Map;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @RestController
 @RequestMapping("/api/users")
@@ -17,38 +19,49 @@ import org.springframework.http.HttpStatus;
 public class UserController {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserController(UserRepository userRepository) {
+    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @PostMapping("/register")
-    public String register(@RequestBody User user) {
+    public Map<String, Object> register(@RequestBody User user) {
+        Map<String, Object> response = new HashMap<>();
 
         String regex = "^[a-z0-9]{1,7}$";
         if (!Pattern.matches(regex, user.getUsername())) {
-            return "注册失败：用户名必须是小写字母+数字，且不超过7位";
+            response.put("success", false);
+            response.put("message", "注册失败：用户名必须是小写字母+数字，且不超过7位");
+            return response;
         }
 
         if (userRepository.findByUsername(user.getUsername()) != null) {
-            return "注册失败：该用户名已被占用";
+            response.put("success", false);
+            response.put("message", "注册失败：该用户名已被占用");
+            return response;
         }
 
         if (user.getDisplayName() == null || user.getDisplayName().isEmpty()) {
             user.setDisplayName("会员" + user.getUsername());
         }
 
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        
         userRepository.save(user);
-        return "注册成功";
+        response.put("success", true);
+        response.put("message", "注册成功");
+        return response;
     }
 
     @PostMapping("/login")
-    public User login(@RequestBody User loginUser) {
+    public ResponseEntity<?> login(@RequestBody User loginUser) {
         User user = userRepository.findByUsername(loginUser.getUsername());
-        if (user == null || !user.getPassword().equals(loginUser.getPassword())) {
-            return null;
+        if (user == null || !passwordEncoder.matches(loginUser.getPassword(), user.getPassword())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("用户名或密码错误");
         }
-        return user;
+        return ResponseEntity.ok(user);
     }
 
     @PostMapping("/address")

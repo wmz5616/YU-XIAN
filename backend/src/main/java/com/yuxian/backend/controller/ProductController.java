@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
+import com.yuxian.backend.service.OrderService;
 
 @RestController
 @RequestMapping("/api/products")
@@ -24,6 +25,7 @@ public class ProductController {
     private final ProductRepository productRepository;
     private final com.yuxian.backend.repository.OrderRepository orderRepository;
     private final UserRepository userRepository;
+    private final OrderService orderService;
 
     public ProductController(ProductRepository productRepository, 
                              com.yuxian.backend.repository.OrderRepository orderRepository,
@@ -111,9 +113,11 @@ public class ProductController {
     }
 
     @DeleteMapping("/order/{id}")
-    public String deleteOrder(@PathVariable Long id) {
+    public Map<String, String> deleteOrder(@PathVariable Long id) {
         orderRepository.deleteById(id);
-        return "订单已删除";
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "订单已删除");
+        return response;
     }
 
     private Map<String, Object> createTraceEvent(String time, String title, String desc) {
@@ -126,9 +130,11 @@ public class ProductController {
 
     @PostMapping("/order")
     @Transactional(rollbackFor = Exception.class) 
-    public String createOrder(@RequestBody Map<String, Object> payload) {
+    public Map<String, Object> createOrder(@RequestBody Map<String, Object> payload) {
         String username = (String) payload.get("username");
         List<Map<String, Object>> items = (List<Map<String, Object>>) payload.get("items");
+
+        orderService.createOrder(username, items);
 
         double total = 0.0;
         StringBuilder productNames = new StringBuilder();
@@ -168,7 +174,10 @@ public class ProductController {
         order.setCreateTime(java.time.LocalDateTime.now());
         orderRepository.save(order);
 
-        return "下单成功";
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "下单成功");
+        return response;
     }
 
     @PostMapping("/order/{id}/receive")
