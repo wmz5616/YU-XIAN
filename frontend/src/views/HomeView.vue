@@ -52,7 +52,15 @@ const fetchProducts = async () => {
   loading.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 800))
-    const data = await request('/api/products')
+  
+    let url = '/api/products'
+    if (currentCategory.value !== '全部') {
+      url = `/api/products/category/${currentCategory.value}`
+    } else if (searchQuery.value) {
+      url = `/api/products/search?keyword=${searchQuery.value}`
+    }
+
+    const data = await request(url)
     products.value = data
     
   } catch (e) {
