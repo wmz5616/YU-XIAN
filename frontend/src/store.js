@@ -93,6 +93,7 @@ export const store = reactive({
     this.items = [];
     localStorage.removeItem("yuxian_user");
     localStorage.removeItem("yuxian_cart");
+    localStorage.removeItem("yuxian_token");
     this.showNotification("您已安全退出", "success");
   },
 

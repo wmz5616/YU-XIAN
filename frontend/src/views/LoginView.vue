@@ -18,12 +18,14 @@ const handleLogin = async () => {
   }
 
   try {
-    const user = await request('/api/users/login', {
+    const data = await request('/api/users/login', {
       method: 'POST',
       body: JSON.stringify(form.value)
     })
 
-    store.login(user)
+    store.login(data.user)
+    localStorage.setItem('yuxian_token', data.token)
+
     store.showNotification('登录成功！', 'success')
     router.push('/')
 

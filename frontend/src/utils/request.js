@@ -8,8 +8,11 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL;
 export const request = async (url, options = {}) => {
   const fullUrl = `${API_BASE}${url.startsWith("/") ? url : "/" + url}`;
 
+  const token = localStorage.getItem('yuxian_token');
+
   const defaultHeaders = {
     "Content-Type": "application/json",
+    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
     ...options.headers,
   };
 

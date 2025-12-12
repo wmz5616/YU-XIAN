@@ -13,7 +13,7 @@ public class OrderRecord {
     private Long id;
     private String username; 
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<OrderItem> items;
     
     private Double totalPrice; 

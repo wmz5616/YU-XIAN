@@ -179,114 +179,7 @@ const formatDate = (isoString) => {
   })
 }
 
-const getProductImage = (nameStr) => {
-  if (!nameStr) return '/images/default.jpg'
-  // 贝类
-  if (nameStr.includes('象拔蚌')) return '/images/xiangbabang.jpg'
-  if (nameStr.includes('鲍鱼')) return '/images/baoyu.jpg'
-  if (nameStr.includes('扇贝')) return '/images/shanbei.jpg'
-  if (nameStr.includes('生蚝')) return '/images/shenghao.jpg'
-  if (nameStr.includes('花蛤')) return '/images/huage.jpg'
-  if (nameStr.includes('海螺')) return '/images/hailuo.jpg'
-  if (nameStr.includes('蛏子')) return '/images/chengzi.jpg'
-  if (nameStr.includes('文蛤')) return '/images/wenge.jpg'
-  if (nameStr.includes('青口')) return '/images/qingkou.jpg'
-  if (nameStr.includes('田螺')) return '/images/tianluo.jpg'
-  if (nameStr.includes('赤贝')) return '/images/chibei.jpg'
-  if (nameStr.includes('象牙蚌')) return '/images/xiangyabang.jpg'
-  if (nameStr.includes('带子')) return '/images/daizi.jpg'
-  if (nameStr.includes('血蚶')) return '/images/xuehan.jpg'
-  if (nameStr.includes('响螺')) return '/images/xiangluo.jpg'
-  if (nameStr.includes('河蚌')) return '/images/hebang.jpg'
-  if (nameStr.includes('泥螺')) return '/images/niluo.jpg'
-  if (nameStr.includes('日月贝')) return '/images/riyuebei.jpg'
-  if (nameStr.includes('鸟蛤')) return '/images/niaoge.jpg'
-  // 虾类
-  if (nameStr.includes('波士顿龙虾')) return '/images/boshidunlongxia.jpg'
-  if (nameStr.includes('澳洲龙虾')) return '/images/aozhoulongxia.jpg'
-  if (nameStr.includes('虾蛄')) return '/images/pipixia.jpg'
-  if (nameStr.includes('小龙虾')) return '/images/xiaolongxia.jpg'
-  if (nameStr.includes('基围虾')) return '/images/jiweixia.jpg'
-  if (nameStr.includes('对虾')) return '/images/duixia.jpg'
-  if (nameStr.includes('虎虾')) return '/images/huxia.jpg'
-  if (nameStr.includes('明虾')) return '/images/mingxia.jpg'
-  if (nameStr.includes('南美白对虾')) return '/images/nanmeibaiduixia.jpg'
-  if (nameStr.includes('沼虾')) return '/images/zhaoxia.jpg'
-  if (nameStr.includes('甜虾')) return '/images/tianxia.jpg'
-  if (nameStr.includes('白虾')) return '/images/baixia.jpg'
-  if (nameStr.includes('竹节虾')) return '/images/zhujiexia.jpg'
-  if (nameStr.includes('斑节对虾')) return '/images/banjieduixia.jpg'
-  if (nameStr.includes('罗氏沼虾')) return '/images/luoshizhaoxia.jpg'
-  if (nameStr.includes('九节虾')) return '/images/jiujiexia.jpg'
-  if (nameStr.includes('鹰爪虾')) return '/images/yingzhaoxia.jpg'
-  if (nameStr.includes('草虾')) return '/images/caoxia.jpg'
-  if (nameStr.includes('红虾')) return '/images/hongxia.jpg'
-  if (nameStr.includes('北极甜虾')) return '/images/beijitianxia.jpg'
-  // 蟹类
-  if (nameStr.includes('帝王蟹')) return '/images/diwangxie.jpg'
-  if (nameStr.includes('大闸蟹')) return '/images/dazhaxie.jpg'
-  if (nameStr.includes('青蟹') && !nameStr.includes('潮汕')) return '/images/qingxie.jpg'
-  if (nameStr.includes('梭子蟹') && !nameStr.includes('三疣') && !nameStr.includes('远海')) return '/images/suozixie.jpg'
-  if (nameStr.includes('珍宝蟹')) return '/images/zhenbaoxie.jpg'
-  if (nameStr.includes('花蟹') && !nameStr.includes('红花')) return '/images/huaxie.jpg'
-  if (nameStr.includes('面包蟹')) return '/images/mianbaoxie.jpg'
-  if (nameStr.includes('三疣梭子蟹')) return '/images/sanyousuozixie.jpg'
-  if (nameStr.includes('红花蟹')) return '/images/honghuaxie.jpg'
-  if (nameStr.includes('毛蟹') && !nameStr.includes('红毛')) return '/images/maoxie.jpg'
-  if (nameStr.includes('黄油蟹')) return '/images/huangyouxie.jpg'
-  if (nameStr.includes('六月黄')) return '/images/liuyuehuang.jpg'
-  if (nameStr.includes('紫蟹')) return '/images/zixie.jpg'
-  if (nameStr.includes('石蟹')) return '/images/shixie.jpg'
-  if (nameStr.includes('兰花蟹')) return '/images/lanhuaxie.jpg'
-  if (nameStr.includes('红毛蟹')) return '/images/hongmaoxie.jpg'
-  if (nameStr.includes('晶莹蟹')) return '/images/jingyingxie.jpg'
-  if (nameStr.includes('和乐蟹')) return '/images/helexie.jpg'
-  if (nameStr.includes('远海梭子蟹')) return '/images/yuanhaisuozixie.jpg'
-  if (nameStr.includes('潮汕青蟹')) return '/images/chaoshanqingxie.jpg'
-  // 鱼类
-  if (nameStr.includes('三文鱼') || nameStr.includes('虹鳟')) return '/images/sanwenyu.jpg'
-  if (nameStr.includes('石斑鱼')) return '/images/shibanyu.jpg'
-  if (nameStr.includes('大黄鱼')) return '/images/dahuangyu.jpg'
-  if (nameStr.includes('带鱼')) return '/images/daiyu.jpg'
-  if (nameStr.includes('鳕鱼')) return '/images/xueyu.jpg'
-  if (nameStr.includes('鲈鱼')) return '/images/luyu.jpg'
-  if (nameStr.includes('鲳鱼') && !nameStr.includes('金鲳')) return '/images/changyu.jpg'
-  if (nameStr.includes('马鲛鱼')) return '/images/majiaoyu.jpg'
-  if (nameStr.includes('小黄鱼')) return '/images/xiaohuangyu.jpg'
-  if (nameStr.includes('草鱼')) return '/images/caoyu.jpg'
-  if (nameStr.includes('鲤鱼')) return '/images/liyu.jpg'
-  if (nameStr.includes('黑鱼')) return '/images/heiyu.jpg'
-  if (nameStr.includes('多宝鱼')) return '/images/duobaoyu.jpg'
-  if (nameStr.includes('多春鱼')) return '/images/duochunyu.jpg'
-  if (nameStr.includes('金枪鱼')) return '/images/jinqiangyu.jpg'
-  if (nameStr.includes('罗非鱼')) return '/images/luofeiyu.jpg'
-  if (nameStr.includes('鳗鱼')) return '/images/manyu.jpg'
-  if (nameStr.includes('偏口鱼')) return '/images/piankouyu.jpg'
-  if (nameStr.includes('武昌鱼')) return '/images/wuchangyu.jpg'
-  if (nameStr.includes('金鲳鱼')) return '/images/jinchangyu.jpg'
-  // 头足类
-  if (nameStr.includes('北太平洋巨型章鱼')) return '/images/beitaipingyangjuxingzhangyu.jpg'
-  if (nameStr.includes('鱿鱼') && !nameStr.includes('赤') && !nameStr.includes('阿根廷')) return '/images/youyu.jpg'
-  if (nameStr.includes('墨鱼')) return '/images/moyu.jpg'
-  if (nameStr.includes('章鱼')) return '/images/zhangyu.jpg'
-  if (nameStr.includes('笔管鱼')) return '/images/biguanyu.jpg'
-  if (nameStr.includes('短蛸')) return '/images/duanshao.jpg'
-  if (nameStr.includes('柔鱼')) return '/images/rouyu.jpg'
-  if (nameStr.includes('花枝')) return '/images/huazhi.jpg'
-  if (nameStr.includes('软丝')) return '/images/ruansi.jpg'
-  if (nameStr.includes('小管')) return '/images/xiaoguan.jpg'
-  if (nameStr.includes('透抽')) return '/images/touchou.jpg'
-  if (nameStr.includes('真蛸')) return '/images/zhenshao.jpg'
-  if (nameStr.includes('曼氏无针乌贼')) return '/images/manshiwuzhenwuzei.jpg'
-  if (nameStr.includes('剑尖枪乌贼')) return '/images/jianjianqiangwuzei.jpg'
-  if (nameStr.includes('赤鱿')) return '/images/chiyou.jpg'
-  if (nameStr.includes('阿根廷鱿鱼')) return '/images/agentingyouyu.jpg'
-  if (nameStr.includes('日本枪乌贼')) return '/images/ribenqiangwuzei.jpg'
-  if (nameStr.includes('目斗鱼')) return '/images/mudouyu.jpg'
-  if (nameStr.includes('长蛸')) return '/images/changshao.jpg'
-  if (nameStr.includes('八腕总目')) return '/images/bawan.jpg'
-  return '/images/default.jpg'
-}
+
 const handleAvatarUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -294,20 +187,27 @@ const handleAvatarUpload = async (event) => {
     store.showNotification('图片太大了，请小于 2MB', 'error')
     return
   }
+  
   const reader = new FileReader()
   reader.readAsDataURL(file)
+  
   reader.onload = async () => {
     try {
-      const res = await fetch('http://localhost:8080/api/users/avatar', {
+      const updatedUser = await request('/api/users/avatar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: store.currentUser.username, avatar: reader.result })
+        body: JSON.stringify({ 
+          username: store.currentUser.username, 
+          avatar: reader.result 
+        })
       })
-      if (res.ok) {
-        store.login(await res.json())
+      if (updatedUser) {
+        store.login(updatedUser)
         store.showNotification('头像更新成功！')
       }
-    } catch (e) { store.showNotification('上传失败', 'error') }
+    } catch (e) {
+      console.error(e)
+      store.showNotification(e.message || '上传失败', 'error') 
+    }
   }
 }
 </script>
@@ -488,7 +388,8 @@ const handleAvatarUpload = async (event) => {
             </div>
             <div class="flex gap-5">
               <div class="w-20 h-20 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
-                <img :src="getProductImage(order.productNames)" class="w-full h-full object-cover" />
+                <img :src="order.items && order.items.length > 0 ? order.items[0].imageUrl : '/images/default.jpg'"
+                  class="w-full h-full object-cover" />
               </div>
               <div class="flex-1 flex flex-col justify-between">
                 <div>
