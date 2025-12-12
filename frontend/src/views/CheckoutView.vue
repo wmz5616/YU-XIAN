@@ -92,15 +92,13 @@ const freight = computed(() => store.totalPrice > 200 ? 0 : 20)
 const finalPrice = computed(() => (parseFloat(store.totalPrice) + freight.value).toFixed(2))
 
 const submitOrder = async () => {
-  if (store.items.length === 0) return
+  if (store.items.length === 0) {
+    store.showNotification('购物车是空的', 'warning')
+    return
+  }
 
   if (!selectedAddressId.value) {
-    if (myAddresses.value.length === 0) {
-      showAddressModal.value = true
-      store.showNotification('请先告诉我们要送到哪里~')
-    } else {
-      store.showNotification('请选择一个收货地址', 'warning')
-    }
+    // ...
     return
   }
 
@@ -112,24 +110,28 @@ const submitOrder = async () => {
     }))
   }
 
-  try {
+  const currentFinalPrice = finalPrice.value
 
-    const res = await request('/api/products/order', {
+  try {
+    await request('/api/products/order', {
       method: 'POST',
       body: JSON.stringify(payload)
     })
 
     store.clearCart()
+
     router.push({
       path: '/payment-success',
       query: {
-        amount: finalPrice.value,
+        amount: currentFinalPrice,
         method: paymentMethod.value
       }
     })
+
   } catch (e) {
     console.error(e)
-    store.showNotification('下单失败：库存不足或网络错误', 'error')
+
+    store.showNotification(e.message || '下单失败', 'error')
   }
 }
 

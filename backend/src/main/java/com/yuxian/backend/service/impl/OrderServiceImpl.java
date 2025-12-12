@@ -24,6 +24,10 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createOrder(String username, List<Map<String, Object>> itemPayloads) {
+        if (itemPayloads == null || itemPayloads.isEmpty()) {
+            throw new RuntimeException("订单商品不能为空");
+        }
+
         double total = 0.0;
         OrderRecord order = new OrderRecord();
         order.setUsername(username);
@@ -41,27 +45,13 @@ public class OrderServiceImpl implements OrderService {
             Product product = productRepository.findById(pid)
                     .orElseThrow(() -> new RuntimeException("商品不存在: " + pid));
 
-            if (product.getStock() < quantity) {
+            int rows = productRepository.decreaseStock(pid, quantity);
+            
+            if (rows == 0) {
                 throw new RuntimeException("商品 " + product.getName() + " 库存不足！");
             }
-
-            // 扣减库存
-            product.setStock(product.getStock() - quantity);
-            productRepository.save(product);
-
-            // 组装订单项
             OrderItem item = new OrderItem();
             item.setProductId(product.getId());
-            item.setProductName(product.getName());
-            item.setImageUrl(product.getImageUrl());
-            item.setPrice(product.getPrice());
-            item.setQuantity(quantity);
-            item.setOrder(order); // 关联父订单
-            
-            orderItems.add(item);
-            total += product.getPrice() * quantity;
-
-            namesBuilder.append(product.getName()).append(" x").append(quantity).append(", ");
         }
         String names = namesBuilder.toString();
 
