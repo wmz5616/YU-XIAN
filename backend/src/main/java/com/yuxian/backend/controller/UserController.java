@@ -33,10 +33,10 @@ public class UserController {
     public Map<String, Object> register(@RequestBody User user) {
         Map<String, Object> response = new HashMap<>();
 
-        String regex = "^[a-z0-9]{1,7}$";
+        String regex = "^[a-zA-Z0-9_]{4,20}$";
         if (!Pattern.matches(regex, user.getUsername())) {
             response.put("success", false);
-            response.put("message", "注册失败：用户名必须是小写字母+数字，且不超过7位");
+            response.put("message", "注册失败：用户名长度需为4-20位，仅限字母、数字或下划线");
             return response;
         }
 
@@ -49,6 +49,9 @@ public class UserController {
         if (user.getDisplayName() == null || user.getDisplayName().isEmpty()) {
             user.setDisplayName("会员" + user.getUsername());
         }
+
+        user.setRole("USER");
+        user.setPoints(0);
 
         user.setPassword(passwordEncoder.encode(user.getPassword()));
 

@@ -32,26 +32,29 @@ public class AdminController {
 
     @GetMapping("/dashboard")
     public ResponseEntity<?> getDashboardStats() {
-
         long totalOrders = orderRepository.count();
         long totalUsers = userRepository.count();
         long totalProducts = productRepository.count();
 
-        List<OrderRecord> allOrders = orderRepository.findAll();
-        double totalSales = allOrders.stream().mapToDouble(OrderRecord::getTotalPrice).sum();
+        Double totalSales = orderRepository.selectTotalSales();
+        if (totalSales == null)
+            totalSales = 0.0;
+
+        long pendingOrders = orderRepository.countByStatus("待发货");
 
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalOrders", totalOrders);
         stats.put("totalUsers", totalUsers);
         stats.put("totalProducts", totalProducts);
         stats.put("totalSales", String.format("%.2f", totalSales));
-        stats.put("pendingOrders", allOrders.stream().filter(o -> "待发货".equals(o.getStatus())).count());
+        stats.put("pendingOrders", pendingOrders);
 
         return ResponseEntity.ok(stats);
     }
 
     @GetMapping("/orders")
     public ResponseEntity<?> getAllOrders() {
+
         List<OrderRecord> orders = orderRepository.findAll();
         orders.sort((o1, o2) -> o2.getCreateTime().compareTo(o1.getCreateTime()));
         return ResponseEntity.ok(orders);
@@ -75,7 +78,12 @@ public class AdminController {
     @PostMapping("/products/{id}/restock")
     public ResponseEntity<?> restockProduct(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
 
-        Integer amount = (Integer) payload.get("amount");
+        Number amountNum = (Number) payload.get("amount");
+        if (amountNum == null) {
+            return ResponseEntity.badRequest().body("请输入补货数量");
+        }
+        int amount = amountNum.intValue();
+
         Product product = productRepository.findById(id).orElse(null);
         if (product != null) {
             product.setStock(product.getStock() + amount);
