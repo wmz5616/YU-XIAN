@@ -1,29 +1,24 @@
 package com.yuxian.backend.config;
 
-import com.yuxian.backend.entity.User;
-import com.yuxian.backend.repository.UserRepository;
 import com.yuxian.backend.utils.JwtUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
-    private final UserRepository userRepository;
 
-    public JwtFilter(JwtUtils jwtUtils, UserRepository userRepository) {
+    public JwtFilter(JwtUtils jwtUtils) {
         this.jwtUtils = jwtUtils;
-        this.userRepository = userRepository;
     }
 
     @Override
@@ -36,18 +31,9 @@ public class JwtFilter extends OncePerRequestFilter {
             String username = jwtUtils.validateToken(token);
 
             if (username != null) {
-
-                User user = userRepository.findByUsername(username);
-
-                if (user != null) {
-
-                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + user.getRole());
-
-                    UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(user, null,
-                            Collections.singletonList(authority));
-
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                }
+                UsernamePasswordAuthenticationToken auth = 
+                    new UsernamePasswordAuthenticationToken(username, null, new ArrayList<>());
+                SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
         chain.doFilter(request, response);

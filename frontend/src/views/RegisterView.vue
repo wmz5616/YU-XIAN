@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '../store.js'
-import request from '../utils/request';
+import { request } from '@/utils/request'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL
 const router = useRouter()

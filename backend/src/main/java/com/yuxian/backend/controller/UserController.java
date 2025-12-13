@@ -33,10 +33,10 @@ public class UserController {
     public Map<String, Object> register(@RequestBody User user) {
         Map<String, Object> response = new HashMap<>();
 
-        String regex = "^[a-zA-Z0-9_]{4,20}$";
+        String regex = "^[a-z0-9]{1,7}$";
         if (!Pattern.matches(regex, user.getUsername())) {
             response.put("success", false);
-            response.put("message", "注册失败：用户名长度需为4-20位，仅限字母、数字或下划线");
+            response.put("message", "注册失败：用户名必须是小写字母+数字，且不超过7位");
             return response;
         }
 
@@ -50,11 +50,8 @@ public class UserController {
             user.setDisplayName("会员" + user.getUsername());
         }
 
-        user.setRole("USER");
-        user.setPoints(0);
-
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-
+        
         userRepository.save(user);
         response.put("success", true);
         response.put("message", "注册成功");
@@ -62,18 +59,19 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody User loginRequest) {
-        User user = userRepository.findByUsername(loginRequest.getUsername());
-
-        if (user != null && passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-            String token = jwtUtils.generateToken(user.getUsername());
-            Map<String, Object> response = new HashMap<>();
-            response.put("token", token);
-            response.put("username", user.getUsername());
-            response.put("role", user.getRole());
-            return ResponseEntity.ok(response);
+    public ResponseEntity<?> login(@RequestBody User loginUser) {
+        User user = userRepository.findByUsername(loginUser.getUsername());
+        if (user == null || !passwordEncoder.matches(loginUser.getPassword(), user.getPassword())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("用户名或密码错误");
         }
-        return ResponseEntity.status(401).body("用户名或密码错误");
+        String token = jwtUtils.generateToken(user.getUsername());
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("user", user);     
+        response.put("role", user.getRole());
+        response.put("token", token);
+        
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/address")

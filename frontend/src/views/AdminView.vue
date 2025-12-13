@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import request from '@/utils/request';
+import { request } from '@/utils/request';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();

@@ -1,30 +1,9 @@
 import { reactive } from "vue";
 
 const savedUser = localStorage.getItem("yuxian_user");
-let initialUser = null;
-try {
-  if (savedUser && savedUser !== "undefined") {
-    initialUser = JSON.parse(savedUser);
-  } else {
-    localStorage.removeItem("yuxian_user");
-  }
-} catch (e) {
-  console.error("用户信息解析失败，已重置", e);
-  localStorage.removeItem("yuxian_user");
-}
-
+const initialUser = savedUser ? JSON.parse(savedUser) : null;
 const savedCart = localStorage.getItem("yuxian_cart");
-let initialCart = [];
-try {
-  if (savedCart && savedCart !== "undefined") {
-    initialCart = JSON.parse(savedCart);
-  } else {
-    localStorage.removeItem("yuxian_cart");
-  }
-} catch (e) {
-  console.error("购物车数据解析失败，已重置", e);
-  localStorage.removeItem("yuxian_cart");
-}
+const initialCart = savedCart ? JSON.parse(savedCart) : [];
 
 export const store = reactive({
   items: initialCart,
@@ -104,15 +83,9 @@ export const store = reactive({
   },
 
   login(user) {
-    if (!user) {
-      console.error("尝试登录无效用户");
-      return;
-    }
     this.currentUser = user;
     localStorage.setItem("yuxian_user", JSON.stringify(user));
-
-    const name = user.displayName || user.username || "用户";
-    this.showNotification(`欢迎回来，${name}！`);
+    this.showNotification(`欢迎回来，${user.displayName}！`);
   },
 
   logout() {

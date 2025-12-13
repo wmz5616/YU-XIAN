@@ -2,11 +2,12 @@ package com.yuxian.backend.controller;
 
 import com.yuxian.backend.entity.OrderRecord;
 import com.yuxian.backend.entity.Product;
+import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.OrderRepository;
 import com.yuxian.backend.repository.ProductRepository;
 import com.yuxian.backend.repository.UserRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -16,7 +17,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 @CrossOrigin
-@PreAuthorize("hasRole('ADMIN')")
 public class AdminController {
 
     private final OrderRepository orderRepository;
@@ -30,38 +30,50 @@ public class AdminController {
         this.productRepository = productRepository;
     }
 
+    private boolean isAdmin(String username) {
+        User user = userRepository.findByUsername(username);
+        return user != null && "ADMIN".equals(user.getRole());
+    }
+
     @GetMapping("/dashboard")
-    public ResponseEntity<?> getDashboardStats() {
+    public ResponseEntity<?> getDashboardStats(@RequestParam String username) {
+        if (!isAdmin(username))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("无权访问");
+
         long totalOrders = orderRepository.count();
         long totalUsers = userRepository.count();
         long totalProducts = productRepository.count();
 
-        Double totalSales = orderRepository.selectTotalSales();
-        if (totalSales == null)
-            totalSales = 0.0;
-
-        long pendingOrders = orderRepository.countByStatus("待发货");
+        List<OrderRecord> allOrders = orderRepository.findAll();
+        double totalSales = allOrders.stream().mapToDouble(OrderRecord::getTotalPrice).sum();
 
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalOrders", totalOrders);
         stats.put("totalUsers", totalUsers);
         stats.put("totalProducts", totalProducts);
         stats.put("totalSales", String.format("%.2f", totalSales));
-        stats.put("pendingOrders", pendingOrders);
+        stats.put("pendingOrders", allOrders.stream().filter(o -> "待发货".equals(o.getStatus())).count());
 
         return ResponseEntity.ok(stats);
     }
 
     @GetMapping("/orders")
-    public ResponseEntity<?> getAllOrders() {
+    public ResponseEntity<?> getAllOrders(@RequestParam String username) {
+        if (!isAdmin(username))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("无权访问");
 
         List<OrderRecord> orders = orderRepository.findAll();
         orders.sort((o1, o2) -> o2.getCreateTime().compareTo(o1.getCreateTime()));
+
         return ResponseEntity.ok(orders);
     }
 
     @PostMapping("/orders/{id}/ship")
-    public ResponseEntity<?> shipOrder(@PathVariable Long id) {
+    public ResponseEntity<?> shipOrder(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        String username = payload.get("username");
+        if (!isAdmin(username))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("无权访问");
+
         OrderRecord order = orderRepository.findById(id).orElse(null);
         if (order == null)
             return ResponseEntity.badRequest().body("订单不存在");
@@ -77,12 +89,11 @@ public class AdminController {
 
     @PostMapping("/products/{id}/restock")
     public ResponseEntity<?> restockProduct(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        String username = (String) payload.get("username");
+        if (!isAdmin(username))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("无权访问");
 
-        Number amountNum = (Number) payload.get("amount");
-        if (amountNum == null) {
-            return ResponseEntity.badRequest().body("请输入补货数量");
-        }
-        int amount = amountNum.intValue();
+        int amount = (int) payload.get("amount");
 
         Product product = productRepository.findById(id).orElse(null);
         if (product != null) {
