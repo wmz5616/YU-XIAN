@@ -51,7 +51,7 @@ public class UserController {
         }
 
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        
+
         userRepository.save(user);
         response.put("success", true);
         response.put("message", "注册成功");
@@ -59,19 +59,18 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody User loginUser) {
-        User user = userRepository.findByUsername(loginUser.getUsername());
-        if (user == null || !passwordEncoder.matches(loginUser.getPassword(), user.getPassword())) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("用户名或密码错误");
+    public ResponseEntity<?> login(@RequestBody User loginRequest) {
+        User user = userRepository.findByUsername(loginRequest.getUsername());
+
+        if (user != null && passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
+            String token = jwtUtils.generateToken(user.getUsername());
+            Map<String, Object> response = new HashMap<>();
+            response.put("token", token);
+            response.put("username", user.getUsername());
+            response.put("role", user.getRole());
+            return ResponseEntity.ok(response);
         }
-        String token = jwtUtils.generateToken(user.getUsername());
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("user", user);     
-        response.put("role", user.getRole());
-        response.put("token", token);
-        
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(401).body("用户名或密码错误");
     }
 
     @PostMapping("/address")

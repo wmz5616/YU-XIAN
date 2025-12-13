@@ -1,93 +1,98 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { store } from '@/store'
-import { request } from '@/utils/request'
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { store } from '../store';
+import request from '../utils/request';
 
-const router = useRouter()
+const router = useRouter();
+const loading = ref(false);
+const errorMessage = ref('');
 
 const form = ref({
   username: '',
   password: ''
-})
+});
 
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
-    store.showNotification('请输入用户名和密码', 'error')
-    return
+    errorMessage.value = "请输入账号和密码";
+    return;
   }
+
+  loading.value = true;
+  errorMessage.value = '';
 
   try {
-    const data = await request('/api/users/login', {
-      method: 'POST',
-      body: JSON.stringify(form.value)
-    })
+    const response = await request.post('/users/login', form.value);
 
-    store.login(data.user)
-    localStorage.setItem('yuxian_token', data.token)
-    localStorage.setItem('role', data.role)
-    store.showNotification('登录成功！', 'success')
+    console.log("登录响应数据:", response);
 
-    if (data.role === 'ADMIN') {
-      console.log('检测到管理员，正在跳转后台...')
-      router.push('/admin')
+    localStorage.setItem('yuxian_token', response.token);
+
+    const userInfo = {
+      username: response.username,
+      role: response.role,
+      token: response.token
+    };
+
+    store.login(userInfo);
+
+    if (response.role === 'ADMIN') {
+      router.push('/admin');
     } else {
-      router.push('/')
+      router.push('/');
     }
-
   } catch (error) {
-    console.error(error)
-    if (error.message && error.message.includes('401')) {
-      store.showNotification('用户名或密码错误', 'error')
-    } else {
-      store.showNotification('登录服务异常，请检查后端', 'error')
-    }
+    console.error("登录出错:", error);
+    errorMessage.value = error.message || "登录失败，请检查账号密码";
+  } finally {
+    loading.value = false;
   }
-}
+};
 </script>
 
 <template>
-  <div class="min-h-[80vh] flex items-center justify-center bg-[#F8FAFC] py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
-      <div class="text-center">
-        <h2 class="mt-6 text-3xl font-bold text-slate-900 font-serif-sc">
-          欢迎回来
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
+      <div>
+        <img class="mx-auto h-16 w-auto" src="/icons/logo.png" alt="Logo" />
+        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          账号登录
         </h2>
-        <p class="mt-2 text-sm text-slate-600">
-          登录您的渔鲜账号
-        </p>
       </div>
 
       <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
-        <div class="rounded-md shadow-sm space-y-4">
+        <div class="rounded-md shadow-sm -space-y-px">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">用户名</label>
-            <input v-model="form.username" type="text" required
-              class="appearance-none rounded-xl relative block w-full px-4 py-3 border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm transition bg-slate-50"
-              placeholder="请输入用户名">
+            <label for="username" class="sr-only">用户名</label>
+            <input v-model="form.username" id="username" name="username" type="text" required
+              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+              placeholder="请输入用户名" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">密码</label>
-            <input v-model="form.password" type="password" required
-              class="appearance-none rounded-xl relative block w-full px-4 py-3 border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm transition bg-slate-50"
-              placeholder="请输入密码">
+            <label for="password" class="sr-only">密码</label>
+            <input v-model="form.password" id="password" name="password" type="password" required
+              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+              placeholder="请输入密码" />
           </div>
+        </div>
+
+        <div v-if="errorMessage" class="text-red-500 text-sm text-center">
+          {{ errorMessage }}
         </div>
 
         <div>
-          <button type="submit"
-            class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-slate-900 hover:bg-blue-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all shadow-lg hover:shadow-blue-900/30 transform active:scale-95">
-            登录
+          <button type="submit" :disabled="loading"
+            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50">
+            <span v-if="loading">登录中...</span>
+            <span v-else>立即登录</span>
           </button>
         </div>
 
-        <div class="text-center">
-          <p class="text-sm text-slate-600">
-            还没有账号？
-            <router-link to="/register" class="font-medium text-blue-600 hover:text-blue-500">
-              立即注册
-            </router-link>
-          </p>
+        <div class="text-center mt-4">
+          <router-link to="/register" class="text-sm text-blue-600 hover:text-blue-500">
+            没有账号？去注册
+          </router-link>
         </div>
       </form>
     </div>
