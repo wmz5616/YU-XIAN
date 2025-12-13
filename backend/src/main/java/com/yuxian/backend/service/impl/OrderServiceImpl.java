@@ -28,15 +28,14 @@ public class OrderServiceImpl implements OrderService {
             throw new RuntimeException("订单商品不能为空");
         }
 
-        double total = 0.0;
         OrderRecord order = new OrderRecord();
         order.setUsername(username);
         order.setCreateTime(java.time.LocalDateTime.now());
         order.setStatus("待发货");
         
         List<OrderItem> orderItems = new ArrayList<>();
-
         StringBuilder namesBuilder = new StringBuilder();
+        double total = 0.0;
 
         for (Map<String, Object> payload : itemPayloads) {
             Long pid = Long.valueOf(payload.get("id").toString());
@@ -46,15 +45,26 @@ public class OrderServiceImpl implements OrderService {
                     .orElseThrow(() -> new RuntimeException("商品不存在: " + pid));
 
             int rows = productRepository.decreaseStock(pid, quantity);
-            
             if (rows == 0) {
                 throw new RuntimeException("商品 " + product.getName() + " 库存不足！");
             }
+
             OrderItem item = new OrderItem();
             item.setProductId(product.getId());
-        }
-        String names = namesBuilder.toString();
+            item.setProductName(product.getName());
+            item.setImageUrl(product.getImageUrl());
+            item.setPrice(product.getPrice());
+            item.setQuantity(quantity);
+            item.setOrder(order);
 
+            orderItems.add(item);
+
+            total += product.getPrice() * quantity;
+
+            namesBuilder.append(product.getName()).append(" x").append(quantity).append(", ");
+        }
+
+        String names = namesBuilder.toString();
         if (names.length() > 2) {
             names = names.substring(0, names.length() - 2);
         }
