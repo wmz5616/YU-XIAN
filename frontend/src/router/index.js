@@ -76,6 +76,12 @@ const router = createRouter({
       component: NotFoundView,
       meta: { title: "页面未找到" },
     },
+    {
+      path: "/admin",
+      name: "admin",
+      component: () => import("../views/AdminView.vue"),
+      meta: { requiresAdmin: true },
+    }
   ],
 });
 

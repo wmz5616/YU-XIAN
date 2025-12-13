@@ -24,6 +24,8 @@ public class User {
     @Column(columnDefinition = "LONGTEXT")
     private String avatar;
 
+    private String role = "USER";
+    
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id")
     private List<Address> addresses;

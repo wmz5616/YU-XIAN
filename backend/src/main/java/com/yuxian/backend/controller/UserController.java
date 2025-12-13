@@ -67,7 +67,8 @@ public class UserController {
         String token = jwtUtils.generateToken(user.getUsername());
         
         Map<String, Object> response = new HashMap<>();
-        response.put("user", user);
+        response.put("user", user);     
+        response.put("role", user.getRole());
         response.put("token", token);
         
         return ResponseEntity.ok(response);

@@ -25,16 +25,22 @@ const handleLogin = async () => {
 
     store.login(data.user)
     localStorage.setItem('yuxian_token', data.token)
-
+    localStorage.setItem('role', data.role)
     store.showNotification('登录成功！', 'success')
-    router.push('/')
+
+    if (data.role === 'ADMIN') {
+      console.log('检测到管理员，正在跳转后台...')
+      router.push('/admin')
+    } else {
+      router.push('/')
+    }
 
   } catch (error) {
     console.error(error)
     if (error.message && error.message.includes('401')) {
-       store.showNotification('用户名或密码错误', 'error')
+      store.showNotification('用户名或密码错误', 'error')
     } else {
-       store.showNotification('登录服务异常，请检查后端', 'error')
+      store.showNotification('登录服务异常，请检查后端', 'error')
     }
   }
 }

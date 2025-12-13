@@ -1,10 +1,14 @@
 package com.yuxian.backend.component;
 
 import com.yuxian.backend.entity.Product;
+import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.ProductRepository;
+import com.yuxian.backend.repository.UserRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +22,16 @@ import java.util.Random;
 public class DataInit implements CommandLineRunner {
 
     private final ProductRepository productRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public DataInit(ProductRepository productRepository, UserRepository userRepository,
+            PasswordEncoder passwordEncoder) {
+        this.productRepository = productRepository;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
     private static final Map<String, double[]> PRICE_RANGES = new HashMap<>();
     static {
         PRICE_RANGES.put("鲍鱼", new double[] { 5.0, 15.0 });
@@ -29,29 +43,32 @@ public class DataInit implements CommandLineRunner {
         PRICE_RANGES.put("DEFAULT", new double[] { 20.0, 60.0 });
     }
 
-    public DataInit(ProductRepository productRepository) {
-        this.productRepository = productRepository;
-    }
-
     @Override
     public void run(String... args) throws Exception {
         if (productRepository.count() == 0) {
-            System.out.println("正在从data.txt批量导入海鲜数据...");
+            System.out.println("正在初始化商品数据...");
             ClassPathResource resource = new ClassPathResource("data.txt");
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
-                int count = 0;
                 while ((line = reader.readLine()) != null) {
                     if (!line.trim().isEmpty()) {
                         createProduct(line);
-                        count++;
                     }
                 }
-                System.out.println("批量导入完成！共导入商品: " + count);
             } catch (Exception e) {
                 System.err.println("读取文件失败: " + e.getMessage());
             }
+        }
+
+        if (userRepository.findByUsername("admin") == null) {
+            User admin = new User();
+            admin.setUsername("admin");
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setDisplayName("系统管理员");
+            admin.setRole("ADMIN");
+            userRepository.save(admin);
+            System.out.println("管理员账号初始化完成：admin / admin123");
         }
     }
 

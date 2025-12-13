@@ -87,6 +87,12 @@ const isActive = (path) => route.path === path
           </div>
 
           <div v-else class="flex items-center gap-3 pl-4 border-l border-slate-200">
+
+            <RouterLink v-if="store.currentUser.role === 'ADMIN'" to="/admin"
+              class="text-xs font-bold bg-red-50 text-red-600 border border-red-200 px-3 py-1 rounded-full hover:bg-red-100 transition mr-2">
+              进入后台
+            </RouterLink>
+
             <RouterLink to="/profile" class="flex items-center gap-2 group" exact-active-class="text-blue-900">
               <div class="w-8 h-8 rounded-full bg-blue-100 overflow-hidden border border-blue-200">
                 <img v-if="store.currentUser.avatar" :src="store.currentUser.avatar"
@@ -99,6 +105,7 @@ const isActive = (path) => route.path === path
                 {{ store.currentUser.displayName }}
               </span>
             </RouterLink>
+
             <button @click="handleLogout" class="text-slate-400 hover:text-red-500 text-xs ml-2">
               退出
             </button>
@@ -219,7 +226,6 @@ const isActive = (path) => route.path === path
   animation: slide-in 0.3s ease-out forwards;
 }
 
-/* 【新增】页面切换动画 */
 .page-enter-active,
 .page-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -229,6 +235,5 @@ const isActive = (path) => route.path === path
 .page-leave-to {
   opacity: 0;
   transform: translateY(5px);
-  /* 轻微上浮效果 */
 }
 </style>
