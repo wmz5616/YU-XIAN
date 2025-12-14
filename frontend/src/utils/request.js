@@ -43,26 +43,28 @@ const service = async (url, options = {}) => {
   }
 };
 
-// 2. 挂载快捷方法 (模仿 Axios)
-const request = {
-  // 让 request(url) 直接生效 (兼容旧代码)
-  ...((url, options) => service(url, options)),
-  
-  // 显式方法
+// 2. 定义辅助方法 (修改了变量名，避免冲突)
+const methodHelper = {
   get: (url) => service(url, { method: 'GET' }),
   post: (url, data) => service(url, { method: 'POST', body: JSON.stringify(data) }),
   put: (url, data) => service(url, { method: 'PUT', body: JSON.stringify(data) }),
   del: (url) => service(url, { method: 'DELETE' }),
-  // 这一行让 request(...) 函数调用也能工作
   call: service 
 };
 
-// 关键：让 request 本身作为一个函数可调用，同时挂载 .get/.post
+// 3. 构建主函数对象
 const requestFn = (url, options) => service(url, options);
-requestFn.get = request.get;
-requestFn.post = request.post;
-requestFn.put = request.put;
-requestFn.delete = request.del;
 
-// 3. 只使用默认导出 (最稳妥的方式)
+// 挂载快捷方法 (.get, .post 等)
+requestFn.get = methodHelper.get;
+requestFn.post = methodHelper.post;
+requestFn.put = methodHelper.put;
+requestFn.delete = methodHelper.del;
+
+// === 导出部分 ===
+
+// 1. 命名导出 (修复 HomeView.vue 等文件的 import { request } 报错)
+export const request = requestFn;
+
+// 2. 默认导出 (兼容其他写法)
 export default requestFn;

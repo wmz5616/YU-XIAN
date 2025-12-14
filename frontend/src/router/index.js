@@ -81,7 +81,7 @@ const router = createRouter({
       name: "admin",
       component: () => import("../views/AdminView.vue"),
       meta: { requiresAdmin: true },
-    }
+    },
   ],
 });
 
@@ -94,6 +94,19 @@ router.beforeEach((to, from, next) => {
   document.title = to.meta.title
     ? `${to.meta.title} - ${siteTitle}`
     : siteTitle;
+
+  const userStr = localStorage.getItem("yuxian_user");
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  // 2. 检查是否需要管理员权限
+  if (to.meta.requiresAdmin) {
+    if (!user || user.role !== "ADMIN") {
+      // 没登录或者不是管理员，踢回首页或登录页
+      alert("无权访问"); // 可选：给个提示
+      next("/");
+      return;
+    }
+  }
 
   next();
 });

@@ -8,6 +8,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.cors.CorsConfiguration; // 新增
+import org.springframework.web.cors.CorsConfigurationSource; // 新增
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource; // 新增
+import java.util.Arrays; // 新增
 
 @Configuration
 @EnableWebSecurity
@@ -28,14 +32,27 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-            .cors(cors -> {}) // 开启跨域支持
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // 修改这里：注入配置源
             .authorizeHttpRequests(auth -> auth
-                // 允许登录、注册、查看商品、静态资源
-                .requestMatchers("/api/users/login", "/api/users/register", "/api/products/**", "/images/**").permitAll()
-                // 其他接口（如下单、修改地址）需要认证
+                .requestMatchers("/api/users/login", "/api/users/register", "/api/products/**", "/images/**", "/error").permitAll() // 建议把 /error 也放行
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    // 新增：全局 CORS 配置 Bean
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        // 允许的前端地址，开发环境通常是 5173
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://127.0.0.1:5173"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        configuration.setAllowCredentials(true);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }
