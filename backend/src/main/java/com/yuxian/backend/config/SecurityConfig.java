@@ -34,7 +34,8 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource())) // 修改这里：注入配置源
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/users/login", "/api/users/register", "/api/products/**", "/images/**", "/error").permitAll() // 建议把 /error 也放行
+                .requestMatchers("/api/users/login", "/api/users/register", "/api/products/**", "/images/**", "/error", "/api/orders/**").permitAll() // 建议把 /error 也放行
+                .requestMatchers("/ws/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

@@ -1,7 +1,9 @@
 package com.yuxian.backend.component;
 
+import com.yuxian.backend.entity.Coupon;
 import com.yuxian.backend.entity.Product;
 import com.yuxian.backend.entity.User;
+import com.yuxian.backend.repository.CouponRepository;
 import com.yuxian.backend.repository.ProductRepository;
 import com.yuxian.backend.repository.UserRepository;
 import org.springframework.boot.CommandLineRunner;
@@ -24,52 +26,115 @@ public class DataInit implements CommandLineRunner {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CouponRepository couponRepository; // 必须注入
 
-    public DataInit(ProductRepository productRepository, UserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+    public DataInit(ProductRepository productRepository,
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            CouponRepository couponRepository) {
         this.productRepository = productRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.couponRepository = couponRepository;
     }
 
+    // === 2025年 生鲜市场参考价格区间 (单位: 元/kg) ===
     private static final Map<String, double[]> PRICE_RANGES = new HashMap<>();
     static {
-        PRICE_RANGES.put("鲍鱼", new double[] { 5.0, 15.0 });
-        PRICE_RANGES.put("生蚝", new double[] { 3.0, 8.0 });
-        PRICE_RANGES.put("大闸蟹", new double[] { 35.0, 88.0 });
-        PRICE_RANGES.put("波士顿龙虾", new double[] { 128.0, 198.0 });
-        PRICE_RANGES.put("帝王蟹", new double[] { 800.0, 1500.0 });
-        PRICE_RANGES.put("皮皮虾", new double[] { 45.0, 65.0 });
-        PRICE_RANGES.put("DEFAULT", new double[] { 20.0, 60.0 });
+        PRICE_RANGES.put("带鱼", new double[] { 35.0, 58.0 });
+        PRICE_RANGES.put("大黄鱼", new double[] { 45.0, 80.0 });
+        PRICE_RANGES.put("小黄鱼", new double[] { 25.0, 40.0 });
+        PRICE_RANGES.put("三文鱼", new double[] { 130.0, 180.0 });
+        PRICE_RANGES.put("鳕鱼", new double[] { 150.0, 220.0 });
+        PRICE_RANGES.put("石斑鱼", new double[] { 65.0, 110.0 });
+        PRICE_RANGES.put("多宝鱼", new double[] { 50.0, 70.0 });
+        PRICE_RANGES.put("金枪鱼", new double[] { 200.0, 400.0 });
+        PRICE_RANGES.put("鳗鱼", new double[] { 70.0, 100.0 });
+        PRICE_RANGES.put("鲈鱼", new double[] { 20.0, 35.0 });
+        PRICE_RANGES.put("草鱼", new double[] { 12.0, 18.0 });
+        PRICE_RANGES.put("鲤鱼", new double[] { 10.0, 16.0 });
+        PRICE_RANGES.put("罗非鱼", new double[] { 12.0, 20.0 });
+        PRICE_RANGES.put("鲳鱼", new double[] { 40.0, 75.0 });
+        PRICE_RANGES.put("波士顿龙虾", new double[] { 220.0, 320.0 });
+        PRICE_RANGES.put("澳洲龙虾", new double[] { 500.0, 800.0 });
+        PRICE_RANGES.put("基围虾", new double[] { 55.0, 85.0 });
+        PRICE_RANGES.put("皮皮虾", new double[] { 60.0, 90.0 });
+        PRICE_RANGES.put("虾蛄", new double[] { 60.0, 90.0 });
+        PRICE_RANGES.put("南美白对虾", new double[] { 40.0, 60.0 });
+        PRICE_RANGES.put("罗氏沼虾", new double[] { 70.0, 100.0 });
+        PRICE_RANGES.put("斑节对虾", new double[] { 110.0, 160.0 });
+        PRICE_RANGES.put("北极甜虾", new double[] { 90.0, 130.0 });
+        PRICE_RANGES.put("小龙虾", new double[] { 30.0, 50.0 });
+        PRICE_RANGES.put("帝王蟹", new double[] { 450.0, 750.0 });
+        PRICE_RANGES.put("珍宝蟹", new double[] { 180.0, 260.0 });
+        PRICE_RANGES.put("面包蟹", new double[] { 120.0, 180.0 });
+        PRICE_RANGES.put("大闸蟹", new double[] { 100.0, 200.0 });
+        PRICE_RANGES.put("梭子蟹", new double[] { 80.0, 140.0 });
+        PRICE_RANGES.put("青蟹", new double[] { 110.0, 160.0 });
+        PRICE_RANGES.put("红毛蟹", new double[] { 350.0, 550.0 });
+        PRICE_RANGES.put("鲍鱼", new double[] { 80.0, 150.0 });
+        PRICE_RANGES.put("生蚝", new double[] { 20.0, 40.0 });
+        PRICE_RANGES.put("象拔蚌", new double[] { 250.0, 400.0 });
+        PRICE_RANGES.put("扇贝", new double[] { 30.0, 50.0 });
+        PRICE_RANGES.put("花蛤", new double[] { 10.0, 18.0 });
+        PRICE_RANGES.put("蛏子", new double[] { 25.0, 45.0 });
+        PRICE_RANGES.put("鱿鱼", new double[] { 35.0, 55.0 });
+        PRICE_RANGES.put("墨鱼", new double[] { 40.0, 65.0 });
+        PRICE_RANGES.put("章鱼", new double[] { 45.0, 70.0 });
+        PRICE_RANGES.put("DEFAULT", new double[] { 30.0, 60.0 });
     }
 
     @Override
     public void run(String... args) throws Exception {
+        // 1. 初始化商品
         if (productRepository.count() == 0) {
-            System.out.println("正在初始化商品数据...");
+            System.out.println(">>> 正在初始化商品数据...");
             ClassPathResource resource = new ClassPathResource("data.txt");
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (!line.trim().isEmpty()) {
+                    if (!line.trim().isEmpty())
                         createProduct(line);
-                    }
                 }
             } catch (Exception e) {
-                System.err.println("读取文件失败: " + e.getMessage());
+                System.err.println("!!! 读取 data.txt 失败: " + e.getMessage());
             }
         }
 
+        // 2. 初始化管理员
         if (userRepository.findByUsername("admin") == null) {
             User admin = new User();
             admin.setUsername("admin");
-            admin.setPassword(passwordEncoder.encode("admin123"));
-            admin.setDisplayName("系统管理员");
+            admin.setPassword(passwordEncoder.encode("123456"));
+            admin.setDisplayName("超级管理员");
             admin.setRole("ADMIN");
+            admin.setPoints(9999);
+            admin.setAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=admin");
             userRepository.save(admin);
-            System.out.println("管理员账号初始化完成：admin / admin123");
+            System.out.println(">>> 管理员初始化完成");
         }
+
+        // 3. 初始化优惠券 (这里调用了 createCoupon)
+        if (couponRepository.count() == 0) {
+            createCoupon("新人见面礼", 15.0, 0.0, 100);
+            createCoupon("满100减20", 20.0, 100.0, 50);
+            createCoupon("海鲜狂欢节", 50.0, 300.0, 10);
+            System.out.println(">>> 优惠券数据初始化完成");
+        }
+    }
+
+    // 辅助方法：创建优惠券
+    private void createCoupon(String name, Double amount, Double min, Integer total) {
+        Coupon c = new Coupon();
+        c.setName(name);
+        c.setAmount(amount);
+        c.setMinSpend(min);
+        c.setTotalCount(total);
+        c.setReceivedCount(0);
+        c.setValidUntil(LocalDate.now().plusDays(30));
+        c.setStatus(1);
+        couponRepository.save(c);
     }
 
     private void createProduct(String line) {
@@ -82,20 +147,30 @@ public class DataInit implements CommandLineRunner {
                 String name = parts[1];
                 p.setName(name);
                 p.setOrigin(parts[2]);
-
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy.MM.dd");
                 p.setListDate(LocalDate.parse(parts[3], formatter));
-                p.setDescription(generateDescription(name, parts[2]));
+                p.setDescription(generateDescription(name, parts[2], parts[4]));
 
-                double[] range = PRICE_RANGES.getOrDefault(name.split("\\(")[0], PRICE_RANGES.get("DEFAULT"));
+                String key = name.split("\\(")[0];
+                double[] range = PRICE_RANGES.getOrDefault(key, PRICE_RANGES.get("DEFAULT"));
+                // 如果没匹配到精确key，尝试模糊匹配
+                if (range == PRICE_RANGES.get("DEFAULT")) {
+                    for (String k : PRICE_RANGES.keySet()) {
+                        if (key.contains(k)) {
+                            range = PRICE_RANGES.get(k);
+                            break;
+                        }
+                    }
+                }
+
                 double price = range[0] + Math.random() * (range[1] - range[0]);
                 p.setPrice((double) Math.round(price * 100) / 100);
-                p.setStock((int) (Math.random() * 50) + 10);
+                p.setStock((int) (Math.random() * 190) + 10);
 
                 String imgPath = getImageMapping(name);
-                if (imgPath != null) {
+                if (imgPath != null)
                     p.setImageUrl(imgPath);
-                }
+
                 productRepository.save(p);
             }
         } catch (Exception e) {
@@ -103,16 +178,16 @@ public class DataInit implements CommandLineRunner {
         }
     }
 
-    private String generateDescription(String name, String origin) {
+    private String generateDescription(String name, String origin, String originalDesc) {
         Random random = new Random();
-        String[] templates = {
-                origin + "核心海域纯净捕捞，%s肉质紧实，全程海水运输，不泡淡水拒绝增重。",
-                "甄选" + origin + "优质%s，鲜活直达餐桌，口感鲜甜Q弹，每一口都是大海的味道。",
-                "凌晨捕捞，当日发货，%s个大肥美，深海慢养2年以上，只有懂货的老饕才知道的美味。",
-                "来自" + origin + "的馈赠，%s壳薄肉厚，富含优质蛋白，清蒸红烧皆是上品。"
+        String[] marketing = {
+                "全程冷链直达，锁住鲜活口感。",
+                "核心产区直采，只选A级好货。",
+                "深海慢养，肉质紧实Q弹。",
+                "今日捕捞，极速发货，餐桌上的大海味道。"
         };
-        String template = templates[random.nextInt(templates.length)];
-        return String.format(template, name);
+        String suffix = marketing[random.nextInt(marketing.length)];
+        return String.format("【%s】%s %s", origin, originalDesc, suffix);
     }
 
     private String getImageMapping(String productName) {
@@ -122,7 +197,7 @@ public class DataInit implements CommandLineRunner {
             return "/images/sanwenyu.jpg";
         if (productName.contains("生蚝"))
             return "/images/shenghao.jpg";
-        if (productName.contains("虾蛄"))
+        if (productName.contains("虾蛄") || productName.contains("皮皮虾"))
             return "/images/pipixia.jpg";
         if (productName.contains("曼氏无针乌贼"))
             return "/images/manshiwuzhenwuzei.jpg";

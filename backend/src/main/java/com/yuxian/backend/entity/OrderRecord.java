@@ -11,6 +11,7 @@ public class OrderRecord {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     private String username;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
@@ -29,4 +30,8 @@ public class OrderRecord {
     public void setStatus(String status) {
         this.status = status;
     }
+
+    private String receiverName;   // 收货人姓名
+    private String receiverPhone;  // 收货人电话
+    private String receiverAddress; //
 }

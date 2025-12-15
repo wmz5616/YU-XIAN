@@ -82,6 +82,18 @@ const router = createRouter({
       component: () => import("../views/AdminView.vue"),
       meta: { requiresAdmin: true },
     },
+    {
+      path: "/coupon",
+      name: "coupon",
+      component: () => import("../views/CouponView.vue"),
+      meta: { title: "优惠券中心" },
+    },
+    {
+      path: "/admin/refund",
+      name: "admin-refund",
+      component: () => import("../views/AdminRefundView.vue"),
+      meta: { title: "售后管理" },
+    },
   ],
 });
 

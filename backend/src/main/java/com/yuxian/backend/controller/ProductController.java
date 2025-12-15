@@ -1,6 +1,7 @@
 package com.yuxian.backend.controller;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -27,6 +28,7 @@ public class ProductController {
     private final UserRepository userRepository;
     private final OrderService orderService;
 
+    // 港口坐标库 (模拟地图轨迹用)
     private static final Map<String, double[]> PORT_COORDINATES = new HashMap<>();
     static {
         PORT_COORDINATES.put("大连", new double[] { 121.6147, 38.9140 });
@@ -72,6 +74,10 @@ public class ProductController {
         return productRepository.findById(id).orElse(null);
     }
 
+    /**
+     * 获取商品的大数据洞察 (价格趋势 + 溯源 + 环境)
+     * 核心优化：使用倒推算法生成逼真的价格曲线
+     */
     @GetMapping("/{id}/insight")
     public Map<String, Object> getProductInsight(@PathVariable Long id) {
         Product product = productRepository.findById(id).orElse(null);
@@ -80,22 +86,54 @@ public class ProductController {
         if (product == null)
             return result;
 
+        // 1. 生成价格历史 (最近7天)
         List<Map<String, Object>> priceHistory = new ArrayList<>();
-        double basePrice = product.getPrice();
+        double currentPrice = product.getPrice();
         LocalDate today = LocalDate.now();
-        Random random = new Random(id);
+        Random random = new Random(id); // 使用ID作为种子，保证每次刷新图表形状不变
 
-        for (int i = 6; i >= 0; i--) {
+        // 先把今天的价格放进去 (终点)
+        // 我们需要生成 7 个点：T-6, T-5, ... T-0 (今天)
+        // 算法：从今天倒推过去，模拟昨天的价格
+
+        List<Double> simulatedPrices = new ArrayList<>();
+        simulatedPrices.add(currentPrice);
+
+        double tempPrice = currentPrice;
+        for (int i = 0; i < 6; i++) {
+            // 波动率 3%
+            double volatility = 0.03;
+            // 随机涨跌因子 (正态分布)
+            double change = 1.0 + (random.nextGaussian() * volatility);
+
+            // 昨天的价格 = 今天的价格 / 变动因子
+            // 这样倒推可以保证曲线看起来自然，且最后一天一定是真实售价
+            tempPrice = tempPrice / change;
+
+            // 兜底：防止价格变成负数或偏离太远 (限制在原价的 50% ~ 150%)
+            if (tempPrice < currentPrice * 0.5)
+                tempPrice = currentPrice * 0.55;
+            if (tempPrice > currentPrice * 1.5)
+                tempPrice = currentPrice * 1.45;
+
+            simulatedPrices.add(tempPrice);
+        }
+
+        // 此时 list 是 [今天, 昨天, 前天...]，需要反转
+        Collections.reverse(simulatedPrices);
+
+        // 封装成前端需要的格式
+        for (int i = 0; i < 7; i++) {
             Map<String, Object> point = new HashMap<>();
-            LocalDate date = today.minusDays(i);
-            double factor = 0.9 + (random.nextDouble() * 0.2);
-            double dailyPrice = Math.round(basePrice * factor * 100.0) / 100.0;
+            LocalDate date = today.minusDays(6 - i);
+            double p = simulatedPrices.get(i);
             point.put("date", date.format(DateTimeFormatter.ofPattern("MM-dd")));
-            point.put("price", dailyPrice);
+            point.put("price", Double.parseDouble(String.format("%.2f", p)));
             priceHistory.add(point);
         }
         result.put("priceHistory", priceHistory);
 
+        // 2. 生成溯源事件
         List<Map<String, Object>> traceEvents = new ArrayList<>();
         LocalDate catchDate = product.getListDate().minusDays(2);
         traceEvents.add(
@@ -105,6 +143,7 @@ public class ProductController {
         traceEvents.add(createTraceEvent(product.getListDate().toString() + " 08:00", "到达城市前置仓", "已上架"));
         result.put("traceEvents", traceEvents);
 
+        // 3. 生成物流轨迹 (贝塞尔曲线模拟)
         String origin = product.getOrigin() != null ? product.getOrigin() : "";
         double[] port = PORT_COORDINATES.get("DEFAULT");
 
@@ -115,7 +154,8 @@ public class ProductController {
             }
         }
 
-        boolean isImport = origin.contains("进口") || origin.contains("大西洋") || origin.contains("远洋") || origin.contains("美洲");
+        boolean isImport = origin.contains("进口") || origin.contains("大西洋") || origin.contains("远洋")
+                || origin.contains("美洲");
 
         List<double[]> trajectory = new ArrayList<>();
         double endLng = port[0];
@@ -123,8 +163,8 @@ public class ProductController {
         double startLng, startLat;
 
         if (isImport) {
-            startLng = endLng + 15.0 + random.nextDouble() * 5.0; 
-            startLat = endLat - 10.0 + random.nextDouble() * 5.0; 
+            startLng = endLng + 15.0 + random.nextDouble() * 5.0;
+            startLat = endLat - 10.0 + random.nextDouble() * 5.0;
         } else {
             startLng = endLng + 3.0 + random.nextDouble() * 2.0;
             startLat = endLat + (random.nextDouble() - 0.5) * 4.0;
@@ -133,17 +173,15 @@ public class ProductController {
         int steps = 40;
         for (int i = 0; i <= steps; i++) {
             double ratio = (double) i / steps;
-            
             double curveIntensity = isImport ? 2.5 : 0.5;
             double curve = Math.sin(ratio * Math.PI) * curveIntensity;
-            
             double lng = startLng + (endLng - startLng) * ratio - curve;
             double lat = startLat + (endLat - startLat) * ratio + (random.nextDouble() - 0.5) * 0.05;
-            
-            trajectory.add(new double[]{lng, lat});
+            trajectory.add(new double[] { lng, lat });
         }
         result.put("trajectory", trajectory);
 
+        // 4. 生成环境数据 (IoT 模拟)
         Map<String, Object> environment = new HashMap<>();
         environment.put("waterTemp", String.format("%.1f", 16.0 + random.nextDouble() * 4));
         environment.put("salinity", String.format("%.1f", 3.2 + random.nextDouble() * 0.3));
@@ -151,6 +189,7 @@ public class ProductController {
         environment.put("weather", random.nextBoolean() ? "晴朗" : "多云");
         result.put("environment", environment);
 
+        // 区块链 Hash 模拟
         result.put("blockchainHash",
                 "0x" + Long.toHexString(Double.doubleToLongBits(Math.random())).toUpperCase() + "...VERIFIED");
 
@@ -173,18 +212,6 @@ public class ProductController {
         return event;
     }
 
-    @PostMapping("/order")
-    @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> createOrder(@RequestBody Map<String, Object> payload) {
-        String username = (String) payload.get("username");
-        List<Map<String, Object>> items = (List<Map<String, Object>>) payload.get("items");
-        orderService.createOrder(username, items);
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "下单成功");
-        return response;
-    }
-
     @PostMapping("/order/{id}/receive")
     @Transactional
     public ResponseEntity<?> confirmReceipt(@PathVariable Long id) {
@@ -193,8 +220,11 @@ public class ProductController {
             return ResponseEntity.badRequest().body("订单不存在");
         if ("已送达".equals(order.getStatus()))
             return ResponseEntity.badRequest().body("订单已完成");
+
         order.setStatus("已送达");
         orderRepository.save(order);
+
+        // 确认收货后增加用户积分
         User user = userRepository.findByUsername(order.getUsername());
         if (user != null) {
             if (user.getPoints() == null)

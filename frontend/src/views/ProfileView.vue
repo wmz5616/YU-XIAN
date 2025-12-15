@@ -1,460 +1,642 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { store } from '../store.js'
 import { useRouter } from 'vue-router'
 import { request } from '@/utils/request'
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const orders = ref([])
+const couponCount = ref(0)
 const showAddressModal = ref(false)
+const showRefundModal = ref(false) // 售后弹窗
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
+const refundForm = ref({ orderId: null, productNames: '', amount: 0, reason: '', type: '仅退款' })
 const isLocating = ref(false)
+const activeTab = ref('orders')
 const searchQuery = ref('')
 
+// === 分页状态 ===
+const currentPage = ref(1)
+const pageSize = 5 // 每页显示5条，保持页面清爽
+
 onMounted(async () => {
-  if (!store.currentUser) {
-    router.push('/login')
-    return
-  }
+  if (!store.currentUser) { router.push('/login'); return }
   try {
     const username = store.currentUser.username
-
-    const ordersData = await request(`/api/products/orders?username=${username}`)
-    if (ordersData) {
-      orders.value = ordersData
-    }
-
-    const userData = await request(`/api/users/info?username=${username}`)
-    if (userData) {
-      store.login(userData)
-    }
-  } catch (error) {
-    console.error('数据加载失败', error)
-  }
+    const [ordersData, userData, coupons] = await Promise.all([
+      request(`/api/products/orders?username=${username}`),
+      request(`/api/users/info?username=${username}`),
+      request(`/api/coupons/my?username=${username}`)
+    ])
+    if (ordersData) orders.value = ordersData
+    if (userData) store.login(userData)
+    if (coupons) couponCount.value = coupons.filter(c => c.status === 'UNUSED').length
+  } catch (error) { console.error(error) }
 })
 
+// === 核心逻辑：搜索 + 分页 ===
 const filteredOrders = computed(() => {
-  if (!searchQuery.value) return orders.value
-  const query = searchQuery.value.toLowerCase()
-  return orders.value.filter(order => {
-    const displayId = (20250000 + order.id).toString()
-    return displayId.includes(query) || order.productNames.toLowerCase().includes(query)
-  })
+  let result = orders.value
+  // 1. 过滤：排除售后单（售后单去售后Tab看），并匹配搜索词
+  if (activeTab.value === 'orders') {
+    result = result.filter(o => !['售后处理中', '退款成功', '已退货'].includes(o.status))
+  }
+
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    result = result.filter(o => (20250000 + o.id).toString().includes(q) || o.productNames.toLowerCase().includes(q))
+  }
+  // 2. 排序：新订单在前
+  return result.sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
 })
 
-const buyAgain = (productNames) => {
-  if (!productNames) {
-    store.showNotification('该历史订单数据不完整，无法自动加购', 'error')
-    return
+const paginatedOrders = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredOrders.value.slice(start, start + pageSize)
+})
+
+const totalPages = computed(() => Math.ceil(filteredOrders.value.length / pageSize))
+
+// 监听搜索，重置页码
+watch(searchQuery, () => currentPage.value = 1)
+
+// === 售后逻辑 ===
+const afterSalesOrders = computed(() => {
+  return orders.value.filter(o => ['售后处理中', '退款成功', '已退货'].includes(o.status))
+})
+
+const openRefundModal = (order) => {
+  refundForm.value = {
+    orderId: order.id,
+    productNames: order.productNames,
+    amount: order.totalPrice,
+    reason: '',
+    type: '仅退款'
   }
-  const firstProductName = productNames.split('x')[0].replace(/[,，]/g, '').trim()
-  router.push({ path: '/', query: { keyword: firstProductName } })
+  showRefundModal.value = true
 }
 
-const applyRefund = () => {
-  alert('售后服务通道正在维护中，请联系客服：400-888-6666')
+const submitRefund = async () => {
+    if(!refundForm.value.reason) return Swal.fire('请填写申请原因','','warning')
+    
+    try {
+        // ✅ 1. 调用真实后端接口
+        await request.post(`/api/orders/${refundForm.value.orderId}/refund`, {
+            reason: refundForm.value.reason,
+            type: refundForm.value.type
+        })
+        
+        // ✅ 2. 成功后，更新本地列表状态 (无需刷新)
+        const order = orders.value.find(o => o.id === refundForm.value.orderId)
+        if(order) order.status = '售后处理中'
+        
+        showRefundModal.value = false
+        
+        // ✅ 3. 提示并跳转
+        Swal.fire({
+            title: '申请已提交', 
+            text: '商家将在 24 小时内审核您的请求', 
+            icon: 'success', 
+            confirmButtonColor: '#6366f1'
+        })
+        activeTab.value = 'aftersales' // 自动切到售后 Tab
+
+    } catch (e) {
+        Swal.fire('提交失败', e.message || '系统繁忙', 'error')
+    }
 }
 
+// ✨ 优化后的确认收货逻辑
 const confirmReceipt = async (order) => {
-  if (!confirm(`确认收到货了吗？\n确认后将获得 ${Math.floor(order.totalPrice)} 积分！`)) return
+  // 1. 弹窗询问 (富文本 HTML 风格)
+  const result = await Swal.fire({
+    title: '<span class="text-xl font-bold text-slate-800">确认已收到货品？</span>',
+    html: `
+      <div class="flex flex-col items-center gap-4 mt-2">
+        <div class="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center shadow-inner">
+           <span class="text-3xl animate-bounce">📦</span>
+        </div>
+        
+        <p class="text-sm text-slate-500">
+            订单号 <span class="font-mono text-slate-700 font-bold bg-slate-100 px-2 py-0.5 rounded">#${20250000 + order.id}</span>
+        </p>
 
+        <div class="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl p-4 w-full text-center relative overflow-hidden">
+            <div class="absolute -right-4 -top-4 w-12 h-12 bg-orange-200 rounded-full blur-xl opacity-50"></div>
+            <p class="text-xs text-orange-600 font-bold mb-1 uppercase tracking-wider">本次签收可得</p>
+            <p class="text-3xl font-black text-orange-500 flex items-center justify-center gap-1 font-serif-sc">
+                <span>+${Math.floor(order.totalPrice)}</span>
+                <span class="text-xs font-bold mt-2">积分</span>
+            </p>
+        </div>
+
+        <p class="text-xs text-slate-400">保障提示：确认收货后资金将结算给商家</p>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: '确认签收 & 领积分',
+    cancelButtonText: '还没收到',
+    confirmButtonColor: '#4F46E5', // Indigo-600 (匹配主题色)
+    cancelButtonColor: '#94a3b8', // Slate-400
+    focusConfirm: false,
+    reverseButtons: true, // 让确认按钮在右边
+    customClass: {
+      popup: 'rounded-[32px] p-6', // 更圆润的弹窗
+      actions: 'gap-4',
+      confirmButton: 'px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200',
+      cancelButton: 'px-6 py-3 rounded-xl font-medium'
+    }
+  })
+
+  if (!result.isConfirmed) return
+
+  // 2. 执行后端逻辑
   try {
-    const updatedUser = await request(`/api/products/order/${order.id}/receive`, {
-      method: 'POST'
-    })
-
+    const updatedUser = await request(`/api/products/order/${order.id}/receive`, { method: 'POST' })
     store.login(updatedUser)
     order.status = '已送达'
-    store.showNotification(`交易完成！积分 +${Math.floor(order.totalPrice)}`)
 
-  } catch (e) {
-    store.showNotification('操作失败', 'error')
-  }
-}
-
-const deleteOrder = async (orderId) => {
-  if (!confirm('确定删除此订单吗？删除后不可恢复。')) return
-
-  try {
-    await request(`/api/products/order/${orderId}`, {
-      method: 'DELETE'
-    })
-
-    store.showNotification('订单已删除')
-    orders.value = orders.value.filter(o => o.id !== orderId)
-
-  } catch (e) {
-    console.error(e)
-    store.showNotification('删除失败', 'error')
-  }
-}
-
-const locateUser = () => {
-  if (typeof AMap === 'undefined') {
-    store.showNotification('高德地图加载失败，请检查网络或Key', 'error')
-    return
-  }
-
-  isLocating.value = true
-  store.showNotification('正在调用高德定位...')
-
-  AMap.plugin('AMap.Geolocation', function () {
-    const geolocation = new AMap.Geolocation({
-      enableHighAccuracy: true,
-      timeout: 10000,
-      needAddress: true,
-      extensions: 'all'
-    })
-
-    geolocation.getCurrentPosition(function (status, result) {
-      isLocating.value = false
-      if (status === 'complete') {
-        newAddress.value.detail = result.formattedAddress
-        store.showNotification('定位成功')
-      } else {
-        store.showNotification('定位失败：' + (result.message || '权限被拒绝或超时'), 'error')
+    // 3. 成功后的高光反馈
+    Swal.fire({
+      icon: 'success',
+      title: '<span class="text-indigo-600 font-bold">交易完成!</span>',
+      html: `
+        <div class="py-2">
+            <p class="text-slate-500 mb-2">积分已火速到账</p>
+            <div class="inline-block bg-orange-100 text-orange-600 px-4 py-1 rounded-full font-bold">
+                当前积分: ${updatedUser.points}
+            </div>
+        </div>
+      `,
+      timer: 2500,
+      showConfirmButton: false,
+      customClass: {
+        popup: 'rounded-[32px]'
       }
     })
-  })
-}
-
-const saveAddress = async () => {
-  if (!newAddress.value.contact || !newAddress.value.phone || !newAddress.value.detail) {
-    store.showNotification('请填写完整地址信息', 'error')
-    return
-  }
-
-  const currentAddresses = store.currentUser.addresses || []
-  const isDefault = currentAddresses.length === 0
-  const updatedAddresses = [...currentAddresses, { ...newAddress.value, isDefault }]
-
-  try {
-    const updatedUser = await request('/api/users/address', {
-      method: 'POST',
-      body: JSON.stringify({
-        username: store.currentUser.username,
-        addresses: updatedAddresses
-      })
-    })
-
-    store.login(updatedUser)
-    showAddressModal.value = false
-    newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
-    store.showNotification('地址添加成功')
 
   } catch (e) {
-    store.showNotification('保存失败', 'error')
-  }
-}
-
-const removeAddress = async (index) => {
-  if (!confirm('确定要删除这个地址吗？')) return
-  const updatedAddresses = [...store.currentUser.addresses]
-  updatedAddresses.splice(index, 1)
-
-  try {
-    const updatedUser = await request('/api/users/address', {
-      method: 'POST',
-      body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
+    Swal.fire({
+      title: '操作失败',
+      text: '网络似乎开了小差，请稍后再试',
+      icon: 'error',
+      customClass: { popup: 'rounded-[24px]' }
     })
-    store.login(updatedUser)
-    store.showNotification('地址已删除')
-
-  } catch (e) { store.showNotification('删除失败', 'error') }
-}
-
-const getStatusStyle = (status) => {
-  switch (status) {
-    case '待发货': return 'bg-amber-50 text-amber-600 border-amber-200'
-    case '运输中': return 'bg-blue-50 text-blue-600 border-blue-200'
-    case '已送达': return 'bg-green-50 text-green-600 border-green-200'
-    default: return 'bg-slate-50 text-slate-500 border-slate-200'
   }
 }
-
-const formatDate = (isoString) => {
-  if (!isoString) return ''
-  return new Date(isoString).toLocaleString('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-  })
+const deleteOrder = async (id) => {
+  if ((await Swal.fire({ title: '删除订单?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' })).isConfirmed) {
+    try { await request(`/api/products/order/${id}`, { method: 'DELETE' }); orders.value = orders.value.filter(o => o.id !== id); } catch (e) { }
+  }
 }
+const handleAvatarUpload = async (e) => {
+  const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.readAsDataURL(file);
+  reader.onload = async () => { try { const u = await request('/api/users/avatar', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, avatar: reader.result }) }); store.login(u); } catch (e) { } }
+}
+const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); showAddressModal.value = false; }
+const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); }
+const locateUser = () => { isLocating.value = true; setTimeout(() => { newAddress.value.detail = "浙江省舟山市普陀区沈家门渔港路88号"; isLocating.value = false; }, 800) }
+const formatDate = (iso) => new Date(iso).toLocaleDateString()
 
-
-const handleAvatarUpload = async (event) => {
-  const file = event.target.files[0]
-  if (!file) return
-  if (file.size > 2 * 1024 * 1024) {
-    store.showNotification('图片太大了，请小于 2MB', 'error')
-    return
-  }
-  
-  const reader = new FileReader()
-  reader.readAsDataURL(file)
-  
-  reader.onload = async () => {
-    try {
-      const updatedUser = await request('/api/users/avatar', {
-        method: 'POST',
-        body: JSON.stringify({ 
-          username: store.currentUser.username, 
-          avatar: reader.result 
-        })
-      })
-      if (updatedUser) {
-        store.login(updatedUser)
-        store.showNotification('头像更新成功！')
-      }
-    } catch (e) {
-      console.error(e)
-      store.showNotification(e.message || '上传失败', 'error') 
-    }
-  }
+// UI 辅助
+const getProgressWidth = (status) => {
+  if (['待发货', 'PAID'].includes(status)) return '15%'
+  if (['运输中', 'SHIPPED'].includes(status)) return '60%'
+  if (['已送达', 'DELIVERED'].includes(status)) return '100%'
+  return '0%'
+}
+const isStepActive = (currentStatus, step) => {
+  const steps = ['待发货', '运输中', '已送达'];
+  const map = { 'PAID': '待发货', 'SHIPPED': '运输中', 'DELIVERED': '已送达', '已送达': '已送达', '待发货': '待发货', '运输中': '运输中' };
+  const curr = map[currentStatus] || '待发货';
+  return steps.indexOf(curr) >= steps.indexOf(step);
+}
+const getStatusColor = (s) => {
+  if (['已送达', 'DELIVERED'].includes(s)) return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  if (['售后处理中'].includes(s)) return 'bg-orange-100 text-orange-700 border-orange-200'
+  return 'bg-blue-100 text-blue-700 border-blue-200'
 }
 </script>
 
 <template>
-  <div class="container mx-auto px-4 py-8 max-w-6xl min-h-screen">
+  <div class="min-h-screen bg-slate-50 font-sans relative overflow-hidden selection:bg-indigo-500 selection:text-white">
 
-    <div v-if="showAddressModal"
-      class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
-      <div class="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl animate-scale-up border border-slate-100">
-        <h3 class="text-xl font-bold mb-6 text-slate-900">新增地址</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="text-xs font-bold text-slate-500 mb-1 block">联系人</label>
-            <input v-model="newAddress.contact" placeholder="例如: 张三"
-              class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition">
-          </div>
-          <div>
-            <label class="text-xs font-bold text-slate-500 mb-1 block">手机号</label>
-            <input v-model="newAddress.phone" placeholder="例如: 13800138000"
-              class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition">
-          </div>
-
-          <div>
-            <div class="flex justify-between items-center mb-1">
-              <label class="text-xs font-bold text-slate-500 block">详细地址</label>
-              <button @click="locateUser"
-                class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition font-bold"
-                :disabled="isLocating">
-                <svg v-if="!isLocating" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                </svg>
-                <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-                <span>{{ isLocating ? '高德定位中...' : '定位当前位置' }}</span>
-              </button>
-            </div>
-            <textarea v-model="newAddress.detail" placeholder="点击定位自动填写"
-              class="w-full border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition resize-none h-24"></textarea>
-          </div>
-
-          <div>
-            <label class="text-xs font-bold text-slate-500 mb-2 block">标签</label>
-            <div class="flex gap-3">
-              <button @click="newAddress.tag = '家'"
-                :class="`flex-1 py-2.5 rounded-xl border font-bold text-sm transition ${newAddress.tag === '家' ? 'bg-slate-800 text-white border-slate-800' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`">家</button>
-              <button @click="newAddress.tag = '公司'"
-                :class="`flex-1 py-2.5 rounded-xl border font-bold text-sm transition ${newAddress.tag === '公司' ? 'bg-slate-800 text-white border-slate-800' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`">公司</button>
-            </div>
-          </div>
-        </div>
-        <div class="mt-8 flex gap-4">
-          <button @click="showAddressModal = false"
-            class="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-medium transition">取消</button>
-          <button @click="saveAddress"
-            class="flex-1 py-3 bg-blue-900 text-white rounded-xl font-bold shadow-lg hover:bg-blue-800 transition transform hover:-translate-y-0.5">保存</button>
-        </div>
+    <div class="fixed inset-0 pointer-events-none">
+      <div
+        class="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] bg-indigo-400/20 rounded-full blur-[120px] animate-blob">
+      </div>
+      <div
+        class="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-blue-400/20 rounded-full blur-[120px] animate-blob animation-delay-4000">
+      </div>
+      <div
+        class="absolute top-[20%] right-[10%] w-[40vw] h-[40vw] bg-purple-400/20 rounded-full blur-[100px] animate-blob animation-delay-2000">
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <div class="lg:col-span-4 space-y-6">
-        <div
-          class="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-white relative overflow-hidden group">
-          <div class="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-blue-900 to-blue-800"></div>
-          <div class="relative z-10 flex flex-col items-center mt-4">
-            <div class="relative cursor-pointer">
-              <input type="file" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer"
-                @change="handleAvatarUpload" />
-              <div class="w-20 h-20 rounded-full border-4 border-white shadow-lg overflow-hidden bg-slate-100">
-                <img v-if="store.currentUser?.avatar" :src="store.currentUser.avatar"
-                  class="w-full h-full object-cover" />
-                <div v-else class="w-full h-full flex items-center justify-center text-2xl font-bold text-slate-300">
-                  {{ store.currentUser?.displayName?.charAt(0) }}
-                </div>
-              </div>
-              <div class="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow-sm border border-slate-100">
-                <img src="/icons/icon-search.png" class="w-3 h-3 opacity-50" />
-              </div>
-            </div>
-            <div class="text-center mt-3">
-              <h2 class="text-xl font-bold text-slate-800">{{ store.currentUser?.displayName || '未设置昵称' }}</h2>
-              <div class="flex items-center justify-center gap-2 mt-1">
-                <span class="text-xs text-slate-400">会员名:</span>
-                <span class="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 border border-slate-200">
-                  {{ store.currentUser?.username }}
-                </span>
-              </div>
-            </div>
-            <div class="flex justify-between w-full mt-6 px-4 pt-6 border-t border-slate-100">
-              <div class="text-center">
-                <div class="text-lg font-bold text-slate-800">{{ orders.length }}</div>
-                <div class="text-xs text-slate-400">全部订单</div>
-              </div>
-              <div class="text-center">
-                <div class="text-lg font-bold text-slate-800">0</div>
-                <div class="text-xs text-slate-400">优惠券</div>
-              </div>
-              <div class="text-center">
-                <div class="text-lg font-bold text-slate-800">{{ store.currentUser?.points || 0 }}</div>
-                <div class="text-xs text-slate-400">积分</div>
-              </div>
-            </div>
+    <div class="relative max-w-6xl mx-auto px-6 py-10">
+
+      <header class="flex justify-between items-center mb-10 animate-fade-down">
+        <div class="flex items-center gap-4">
+          <div
+            class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-100 text-indigo-600">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-2xl font-black text-slate-800 tracking-tight">我的空间</h1>
+            <p class="text-sm text-slate-500">欢迎回来，尊贵的会员</p>
           </div>
         </div>
+        <button @click="router.push('/')"
+          class="px-6 py-2.5 bg-white/80 backdrop-blur-xl border border-white/50 text-slate-600 rounded-full text-sm font-bold shadow-sm hover:shadow-md hover:scale-105 transition-all duration-300">
+          返回商城 ➜
+        </button>
+      </header>
 
-        <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="font-bold text-slate-800">收货地址</h3>
-            <button @click="showAddressModal = true" class="text-xs text-blue-600 hover:underline font-medium">+
-              新增</button>
-          </div>
-          <div v-if="store.currentUser?.addresses?.length > 0" class="space-y-3">
-            <div v-for="(addr, index) in store.currentUser.addresses" :key="index"
-              class="p-4 rounded-xl bg-slate-50 border border-slate-100 relative group hover:border-blue-300 transition">
-              <button @click="removeAddress(index)"
-                class="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition px-2">×</button>
-              <div class="flex items-start gap-4">
-                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-xs"
-                  :class="addr.tag === '家' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'">
-                  {{ addr.tag }}
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+        <aside class="lg:col-span-4 space-y-6 animate-fade-in-up" style="animation-delay: 0.1s;">
+          <div
+            class="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[32px] p-8 text-white shadow-2xl shadow-indigo-300/50 relative overflow-hidden group">
+            <div
+              class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay">
+            </div>
+            <div class="relative z-10 flex flex-col items-center">
+              <div class="relative w-24 h-24 mb-4">
+                <img
+                  :src="store.currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${store.currentUser?.username}`"
+                  class="w-full h-full rounded-full border-[3px] border-white/30 object-cover shadow-lg group-hover:scale-105 transition-transform duration-500">
+                <label
+                  class="absolute bottom-0 right-0 bg-white text-indigo-600 p-2 rounded-full cursor-pointer hover:bg-indigo-50 transition shadow-lg">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z">
+                    </path>
+                  </svg>
+                  <input type="file" @change="handleAvatarUpload" class="hidden">
+                </label>
+              </div>
+              <h2 class="text-2xl font-bold tracking-wide">{{ store.currentUser?.displayName ||
+                store.currentUser?.username }}</h2>
+              <div
+                class="mt-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-mono tracking-wider border border-white/10">
+                SVIP · {{ store.currentUser?.username }}</div>
+
+              <div class="grid grid-cols-3 gap-4 w-full mt-8 border-t border-white/10 pt-6">
+                <div class="text-center">
+                  <div class="text-xl font-bold font-serif-sc">{{ orders.length }}</div>
+                  <div class="text-[10px] opacity-70 mt-1 uppercase">Orders</div>
                 </div>
-                <div class="flex-1 min-w-0 pt-0.5">
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="font-bold text-sm text-slate-800">{{ addr.contact }}</span>
-                    <span class="text-xs text-slate-400 font-mono">{{ addr.phone }}</span>
-                    <span v-if="addr.isDefault"
-                      class="text-[10px] bg-red-50 text-red-500 px-1.5 rounded border border-red-100">默认</span>
-                  </div>
-                  <p class="text-xs text-slate-500 leading-relaxed truncate">{{ addr.detail }}</p>
+                <div class="text-center cursor-pointer" @click="router.push('/coupon')">
+                  <div class="text-xl font-bold font-serif-sc text-orange-300">{{ couponCount }}</div>
+                  <div class="text-[10px] opacity-70 mt-1 uppercase">Coupons</div>
+                </div>
+                <div class="text-center">
+                  <div class="text-xl font-bold font-serif-sc">{{ store.currentUser?.points || 0 }}</div>
+                  <div class="text-[10px] opacity-70 mt-1 uppercase">Points</div>
                 </div>
               </div>
             </div>
           </div>
-          <div v-else
-            class="text-center py-8 text-slate-400 text-xs bg-slate-50 rounded-xl border border-dashed border-slate-200 cursor-pointer hover:bg-slate-100 transition"
-            @click="showAddressModal = true">
-            暂无地址，点击添加
-          </div>
-        </div>
-      </div>
 
-      <div class="lg:col-span-8">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-xl font-bold text-slate-800">我的订单记录</h2>
-          <div class="flex gap-2">
-            <input v-model="searchQuery" type="text" placeholder="搜索订单号/商品..."
-              class="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-blue-500 transition">
-          </div>
-        </div>
-        <div v-if="filteredOrders.length > 0" class="space-y-5">
-          <div v-for="order in filteredOrders" :key="order.id"
-            class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg transition-all duration-300 relative group">
-
-            <button @click="deleteOrder(order.id)"
-              class="absolute top-2 right-2 z-10 text-slate-400 hover:text-red-600 transition p-1.5 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100"
-              title="删除订单">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+          <div
+            class="bg-white/70 backdrop-blur-xl border border-white/60 rounded-3xl p-2 shadow-lg shadow-slate-200/50">
+            <button @click="activeTab = 'orders'" :class="['nav-btn group', activeTab === 'orders' ? 'active' : '']">
+              <span class="text-2xl">📦</span>
+              <div class="text-left">
+                <div class="font-bold text-sm">我的订单</div>
+                <div class="text-[10px] opacity-60">物流与管理</div>
+              </div>
             </button>
 
-            <div class="flex justify-between items-center pb-4 border-b border-slate-50 mb-4">
-              <span class="text-xs font-mono text-slate-400">Order #{{ 20250000 + order.id }}</span>
-              <div class="flex items-center gap-3 pr-6">
-                <span class="text-xs text-slate-400">{{ formatDate(order.createTime) }}</span>
-                <span :class="`px-2.5 py-0.5 text-xs font-bold rounded border ${getStatusStyle(order.status)}`">
-                  {{ order.status }}
-                </span>
+            <button @click="activeTab = 'aftersales'"
+              :class="['nav-btn group', activeTab === 'aftersales' ? 'active' : '']">
+              <span class="text-2xl">🛡️</span>
+              <div class="text-left">
+                <div class="font-bold text-sm">售后服务</div>
+                <div class="text-[10px] opacity-60">退款/退货</div>
               </div>
-            </div>
-            <div class="flex gap-5">
-              <div class="w-20 h-20 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
-                <img :src="order.items && order.items.length > 0 ? order.items[0].imageUrl : '/images/default.jpg'"
-                  class="w-full h-full object-cover" />
+              <div v-if="afterSalesOrders.length > 0"
+                class="ml-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{{ afterSalesOrders.length
+                }}
               </div>
-              <div class="flex-1 flex flex-col justify-between">
-                <div>
-                  <h3 class="font-bold text-slate-800 text-base mb-1 line-clamp-1">{{ order.productNames }}</h3>
-                  <p class="text-xs text-slate-400">规格：标准装 | 配送：顺丰冷链</p>
-                </div>
-                <div class="flex justify-between items-end">
-                  <span class="text-lg font-bold text-slate-900 font-serif-sc">¥{{ order.totalPrice }}</span>
-                  <div class="flex gap-2">
-                    <button v-if="order.status !== '已送达'" @click="confirmReceipt(order)"
-                      class="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs hover:bg-green-700 transition shadow-md shadow-green-600/20">确认收货</button>
+            </button>
 
-                    <button @click="applyRefund"
-                      class="px-3 py-1.5 border border-slate-200 rounded-md text-xs text-slate-600 hover:bg-slate-50 transition">申请售后</button>
-                    <button @click="buyAgain(order.productNames)"
-                      class="px-3 py-1.5 bg-blue-900 text-white rounded-md text-xs hover:bg-blue-800 transition shadow-md shadow-blue-900/10">再来一单</button>
+            <button @click="activeTab = 'address'" :class="['nav-btn group', activeTab === 'address' ? 'active' : '']">
+              <span class="text-2xl">📍</span>
+              <div class="text-left">
+                <div class="font-bold text-sm">地址管理</div>
+                <div class="text-[10px] opacity-60">收货设置</div>
+              </div>
+            </button>
+          </div>
+        </aside>
+
+        <main class="lg:col-span-8 min-h-[500px]">
+
+          <div v-if="activeTab === 'orders'" class="space-y-6 animate-fade-in-up" style="animation-delay: 0.2s;">
+
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+              </div>
+              <input v-model="searchQuery" type="text"
+                class="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm focus:shadow-lg focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-slate-400 font-medium"
+                placeholder="搜索订单号 / 商品名称...">
+            </div>
+
+            <div v-if="paginatedOrders.length === 0" class="empty-state">
+              <div class="text-6xl mb-4 opacity-20">🍃</div>
+              <p class="text-slate-500 font-medium">{{ searchQuery ? '未找到相关订单' : '暂无订单记录' }}</p>
+            </div>
+
+            <div v-for="order in paginatedOrders" :key="order.id"
+              class="bg-white/90 backdrop-blur-xl rounded-[24px] p-6 shadow-sm border border-white hover:shadow-xl hover:border-indigo-100 transition-all duration-300 group relative overflow-hidden">
+
+              <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+                <div class="flex items-center gap-3">
+                  <div
+                    class="px-3 py-1 rounded-lg bg-slate-100 text-slate-500 text-xs font-mono font-bold tracking-tight">
+                    #{{ 20250000 + order.id }}</div>
+                  <span class="text-xs text-slate-400">{{ formatDate(order.createTime) }}</span>
+                </div>
+                <span :class="['px-3 py-1 rounded-full text-xs font-bold border', getStatusColor(order.status)]">{{
+                  order.status }}</span>
+              </div>
+
+              <div class="flex flex-col sm:flex-row gap-6">
+                <div class="flex-1 space-y-4">
+                  <div class="flex gap-4 items-center">
+                    <div class="relative shrink-0">
+                      <img :src="order.items?.[0]?.imageUrl || '/images/default.jpg'"
+                        class="w-20 h-20 rounded-2xl object-cover shadow-md border border-white group-hover:scale-105 transition-transform duration-500">
+                      <span v-if="(order.items?.length || 0) > 1"
+                        class="absolute -bottom-2 -right-2 bg-slate-800 text-white text-[10px] px-1.5 py-0.5 rounded-md shadow-sm">+{{
+                          order.items.length - 1 }}</span>
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-slate-800 text-lg line-clamp-1 mb-1">{{ order.productNames }}</h3>
+                      <div class="text-xs text-slate-400">共 {{ order.items.length }} 件商品 · 实付 ¥{{ order.totalPrice }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="relative pt-2 pl-1 pr-4">
+                    <div class="h-1 bg-slate-100 rounded-full w-full overflow-hidden">
+                      <div class="h-full bg-indigo-500 rounded-full transition-all duration-1000"
+                        :style="{ width: getProgressWidth(order.status) }"></div>
+                    </div>
+                    <div class="flex justify-between mt-2 text-[10px] font-bold text-slate-300">
+                      <span :class="isStepActive(order.status, '待发货') ? 'text-indigo-600' : ''">待发货</span>
+                      <span :class="isStepActive(order.status, '运输中') ? 'text-indigo-600' : ''">运输中</span>
+                      <span :class="isStepActive(order.status, '已送达') ? 'text-indigo-600' : ''">已送达</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sm:border-l sm:border-slate-50 sm:pl-6 flex flex-row sm:flex-col justify-end gap-2">
+                  <button v-if="order.status === '已送达'" @click="openRefundModal(order)"
+                    class="text-xs text-slate-400 hover:text-indigo-600 px-2 py-1 sm:text-right">申请售后</button>
+                  <div class="flex gap-2">
+                    <button @click="deleteOrder(order.id)"
+                      class="p-2 rounded-xl text-slate-300 hover:bg-red-50 hover:text-red-500 transition"><svg
+                        class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                        </path>
+                      </svg></button>
+                    <button v-if="order.status !== '已送达'" @click="confirmReceipt(order)"
+                      class="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-lg hover:bg-indigo-600 transition-all active:scale-95 whitespace-nowrap">确认收货</button>
                   </div>
                 </div>
               </div>
             </div>
+
+            <div v-if="totalPages > 1" class="flex justify-center items-center gap-4 mt-8">
+              <button @click="currentPage--" :disabled="currentPage === 1"
+                class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-indigo-50 disabled:opacity-50 transition">←</button>
+              <span class="text-sm font-bold text-slate-600 font-mono">{{ currentPage }} / {{ totalPages }}</span>
+              <button @click="currentPage++" :disabled="currentPage === totalPages"
+                class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-indigo-50 disabled:opacity-50 transition">→</button>
+            </div>
+          </div>
+
+          <div v-else-if="activeTab === 'aftersales'" class="space-y-6 animate-fade-in-up">
+            <div
+              class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center gap-3 text-indigo-700 text-sm">
+              <span class="text-xl">🛡️</span>
+              <div><strong>售后保障中</strong>
+                <p class="text-xs opacity-70">为您提供 7 天无理由退换货服务</p>
+              </div>
+            </div>
+            <div v-if="afterSalesOrders.length === 0" class="empty-state">
+              <div class="text-6xl mb-4 opacity-20">📭</div>
+              <p class="text-slate-500">暂无售后记录</p>
+            </div>
+            <div v-for="order in afterSalesOrders" :key="order.id"
+              class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+              <div
+                class="absolute top-0 right-0 px-4 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-bl-xl">
+                处理中</div>
+              <h3 class="font-bold text-slate-800 mb-2">售后单 #AS{{ 20250000 + order.id }}</h3>
+              <div class="flex gap-4 bg-slate-50 p-3 rounded-xl mb-4">
+                <img :src="order.items?.[0]?.imageUrl" class="w-12 h-12 rounded-lg object-cover">
+                <div>
+                  <div class="text-sm font-bold text-slate-700">{{ order.productNames }}</div>
+                  <div class="text-xs text-slate-400">退款金额: ¥{{ order.totalPrice }}</div>
+                </div>
+              </div>
+              <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-orange-500 h-full w-2/3 rounded-full animate-pulse"></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-slate-400 mt-2"><span>提交申请</span><span
+                  class="text-orange-600 font-bold">商家审核中</span><span>退款到账</span></div>
+            </div>
+          </div>
+
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-5 animate-fade-in-up">
+            <div @click="showAddressModal = true"
+              class="bg-white/40 border-2 border-dashed border-indigo-200 rounded-[24px] flex flex-col items-center justify-center min-h-[160px] cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-400 transition text-indigo-400 group">
+              <div
+                class="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                <span class="text-2xl text-indigo-500">+</span>
+              </div>
+              <span class="font-bold text-sm">新增收货地址</span>
+            </div>
+            <div v-for="(addr, idx) in store.currentUser.addresses" :key="idx"
+              class="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 hover:shadow-lg hover:border-indigo-100 transition-all relative group">
+              <div class="flex items-start justify-between mb-3">
+                <span
+                  :class="['text-[10px] font-bold px-2 py-1 rounded border', addr.tag === '家' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-blue-50 text-blue-600 border-blue-100']">{{
+                    addr.tag }}</span>
+                <div v-if="addr.isDefault" class="text-[10px] text-slate-400 flex items-center gap-1"><span
+                    class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> 默认</div>
+              </div>
+              <div class="font-bold text-slate-800 text-lg mb-1">{{ addr.contact }}</div>
+              <div class="text-xs text-slate-400 font-mono mb-3">{{ addr.phone }}</div>
+              <p class="text-sm text-slate-600 leading-relaxed border-t border-slate-50 pt-3">{{ addr.detail }}</p>
+              <button @click="removeAddress(idx)"
+                class="absolute top-4 right-4 text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">✕</button>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <div v-if="showAddressModal"
+      class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-scale-up border border-white/50">
+        <h3 class="text-xl font-black text-slate-800 mb-6">新增地址</h3>
+        <div class="space-y-4">
+          <input v-model="newAddress.contact" placeholder="联系人" class="input-field">
+          <input v-model="newAddress.phone" placeholder="手机号" class="input-field">
+          <div class="relative"><textarea v-model="newAddress.detail" placeholder="详细地址"
+              class="input-field h-24 pt-3 resize-none"></textarea><button @click="locateUser"
+              class="absolute bottom-3 right-3 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-600 transition font-bold flex items-center gap-1">📍
+              定位</button></div>
+          <div class="flex gap-2"><span v-for="t in ['家', '公司', '学校']" :key="t" @click="newAddress.tag = t"
+              :class="['text-xs px-4 py-2 rounded-xl cursor-pointer border transition font-medium', newAddress.tag === t ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100']">{{
+              t }}</span>
           </div>
         </div>
-        <div v-else
-          class="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center h-96 flex flex-col items-center justify-center">
-          <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-            <img src="/icons/empty-order.png" class="w-10 h-10 opacity-40 grayscale" />
-          </div>
-          <h3 class="font-bold text-slate-800 mb-1">{{ searchQuery ? '未找到相关订单' : '暂无订单' }}</h3>
-          <p class="text-sm text-slate-400 mb-6">{{ searchQuery ? '换个关键词试试？' : '快去挑选您心仪的海鲜吧' }}</p>
-          <button @click="router.push('/')"
-            class="px-6 py-2 bg-slate-900 text-white text-sm rounded-full hover:bg-slate-800 transition">去逛逛</button>
+        <div class="flex gap-3 mt-8"><button @click="showAddressModal = false"
+            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button><button
+            @click="saveAddress"
+            class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition font-bold transform active:scale-95">保存</button>
         </div>
       </div>
     </div>
+
+    <div v-if="showRefundModal"
+      class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-scale-up border border-white/50">
+        <h3 class="text-xl font-black text-slate-800 mb-2">申请售后</h3>
+        <p class="text-sm text-slate-500 mb-6">订单 #{{ 20250000 + refundForm.orderId }}</p>
+        <div class="bg-slate-50 p-4 rounded-xl mb-4 flex gap-3">
+          <div class="text-2xl">📦</div>
+          <div>
+            <div class="font-bold text-sm text-slate-700 line-clamp-1">{{ refundForm.productNames }}</div>
+            <div class="text-xs text-slate-400">退款金额: ¥{{ refundForm.amount }}</div>
+          </div>
+        </div>
+        <div class="space-y-4">
+          <div><label class="text-xs font-bold text-slate-500 mb-1 block">售后类型</label>
+            <div class="flex gap-2"><button @click="refundForm.type = '仅退款'"
+                :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '仅退款' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">仅退款</button><button
+                @click="refundForm.type = '退款退货'"
+                :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '退款退货' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">退货退款</button>
+            </div>
+          </div>
+          <div><label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label><textarea
+              v-model="refundForm.reason" placeholder="请描述您遇到的问题..." class="input-field h-24 resize-none"></textarea>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-8"><button @click="showRefundModal = false"
+            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button><button
+            @click="submitRefund"
+            class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 transition font-bold">提交申请</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <style scoped>
+/* 核心修复：将 group 类移除，改用普通的 CSS 写法 */
+.nav-btn {
+  @apply w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 hover:bg-white/50 text-slate-500;
+}
+
+.nav-btn.active {
+  @apply bg-white shadow-md text-indigo-600 scale-[1.02];
+}
+
 .input-field {
-  @apply w-full border border-slate-200 bg-slate-50 p-3 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition text-sm;
+  @apply w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder-slate-400 font-medium;
 }
 
-.tag-btn {
-  @apply flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 font-bold text-sm hover:border-slate-300 transition;
+.empty-state {
+  @apply h-full flex flex-col items-center justify-center bg-white/60 rounded-[32px] border border-dashed border-slate-300 p-12 min-h-[300px];
 }
 
-.tag-btn.active {
-  @apply bg-slate-900 text-white border-slate-900 shadow-md;
+.animate-blob {
+  animation: blob 10s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.btn-primary {
-  @apply flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition active:scale-95;
-}
+@keyframes blob {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.6;
+  }
 
-.btn-secondary {
-  @apply flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-medium transition;
-}
-
-@keyframes shine {
   100% {
-    left: 125%;
+    transform: translate(20px, -20px) scale(1.1);
+    opacity: 0.8;
   }
 }
 
-.animate-shine {
-  animation: shine 2.5s infinite;
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+.animate-fade-down {
+  animation: fadeDown 0.6s ease-out;
+}
+
+@keyframes fadeDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 </style>
