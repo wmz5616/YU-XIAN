@@ -55,7 +55,7 @@ onMounted(() => {
 
             <div class="flex items-center justify-between mb-8">
                 <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    🎟️ 优惠券中心
+                    优惠券中心
                 </h1>
                 <router-link to="/" class="text-sm text-blue-600 hover:text-blue-800 font-medium transition">←
                     返回商城</router-link>

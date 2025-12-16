@@ -334,7 +334,7 @@ watch(() => route.params.id, () => { window.location.reload() })
             <div
               class="bg-slate-900 rounded-[2rem] p-6 text-white relative overflow-hidden shadow-xl shadow-slate-900/10 flex-shrink-0">
               <div class="absolute top-0 right-0 w-40 h-40 bg-blue-500 rounded-full blur-[80px] opacity-30"></div>
-              <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 relative z-10">Real-time Environment</h3>
+              <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 relative z-10">实时环境</h3>
               <div class="space-y-5 relative z-10">
                 <div class="flex justify-between items-center border-b border-white/10 pb-3">
                   <span class="text-sm text-slate-300">海水温度</span>

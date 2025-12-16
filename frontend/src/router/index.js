@@ -8,6 +8,7 @@ import RegisterView from "../views/RegisterView.vue";
 import CheckoutView from "../views/CheckoutView.vue";
 import PaymentSuccessView from "../views/PaymentSuccessView.vue";
 import NotFoundView from "../views/NotFoundView.vue";
+import PointsView from "../views/PointsView.vue";
 
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
@@ -93,6 +94,12 @@ const router = createRouter({
       name: "admin-refund",
       component: () => import("../views/AdminRefundView.vue"),
       meta: { title: "售后管理" },
+    },
+    {
+      path: "/points",
+      name: "points",
+      component: PointsView,
+      meta: { title: "会员积分中心" },
     },
   ],
 });

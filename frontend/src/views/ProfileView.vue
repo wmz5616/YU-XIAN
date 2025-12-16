@@ -7,7 +7,6 @@ import Swal from 'sweetalert2'
 
 const router = useRouter()
 const orders = ref([])
-const couponCount = ref(0)
 const showAddressModal = ref(false)
 const showRefundModal = ref(false) // 售后弹窗
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
@@ -18,20 +17,25 @@ const searchQuery = ref('')
 
 // === 分页状态 ===
 const currentPage = ref(1)
-const pageSize = 5 // 每页显示5条，保持页面清爽
+const pageSize = 5 // 每页显示5条
+
+// ✅ 实时从 Store 计算优惠券数量
+const couponCount = computed(() => store.myCoupons.length)
 
 onMounted(async () => {
   if (!store.currentUser) { router.push('/login'); return }
   try {
     const username = store.currentUser.username
-    const [ordersData, userData, coupons] = await Promise.all([
+
+    // ✅ 核心修复：只拉取订单数据，不拉取用户信息，否则会把积分重置回旧值！
+    const [ordersData] = await Promise.all([
       request(`/api/products/orders?username=${username}`),
-      request(`/api/users/info?username=${username}`),
-      request(`/api/coupons/my?username=${username}`)
+      // request(`/api/users/info?username=${username}`), // ❌ 暂时注释掉：防止覆盖本地积分
+      // request(`/api/coupons/my?username=${username}`)  // ❌ 暂时注释掉：改用本地 Store 统计
     ])
+
     if (ordersData) orders.value = ordersData
-    if (userData) store.login(userData)
-    if (coupons) couponCount.value = coupons.filter(c => c.status === 'UNUSED').length
+
   } catch (error) { console.error(error) }
 })
 
@@ -78,38 +82,34 @@ const openRefundModal = (order) => {
 }
 
 const submitRefund = async () => {
-    if(!refundForm.value.reason) return Swal.fire('请填写申请原因','','warning')
-    
-    try {
-        // ✅ 1. 调用真实后端接口
-        await request.post(`/api/orders/${refundForm.value.orderId}/refund`, {
-            reason: refundForm.value.reason,
-            type: refundForm.value.type
-        })
-        
-        // ✅ 2. 成功后，更新本地列表状态 (无需刷新)
-        const order = orders.value.find(o => o.id === refundForm.value.orderId)
-        if(order) order.status = '售后处理中'
-        
-        showRefundModal.value = false
-        
-        // ✅ 3. 提示并跳转
-        Swal.fire({
-            title: '申请已提交', 
-            text: '商家将在 24 小时内审核您的请求', 
-            icon: 'success', 
-            confirmButtonColor: '#6366f1'
-        })
-        activeTab.value = 'aftersales' // 自动切到售后 Tab
+  if (!refundForm.value.reason) return Swal.fire('请填写申请原因', '', 'warning')
 
-    } catch (e) {
-        Swal.fire('提交失败', e.message || '系统繁忙', 'error')
-    }
+  try {
+    await request.post(`/api/orders/${refundForm.value.orderId}/refund`, {
+      reason: refundForm.value.reason,
+      type: refundForm.value.type
+    })
+
+    const order = orders.value.find(o => o.id === refundForm.value.orderId)
+    if (order) order.status = '售后处理中'
+
+    showRefundModal.value = false
+
+    Swal.fire({
+      title: '申请已提交',
+      text: '商家将在 24 小时内审核您的请求',
+      icon: 'success',
+      confirmButtonColor: '#6366f1'
+    })
+    activeTab.value = 'aftersales'
+
+  } catch (e) {
+    Swal.fire('提交失败', e.message || '系统繁忙', 'error')
+  }
 }
 
-// ✨ 优化后的确认收货逻辑
+// 确认收货逻辑
 const confirmReceipt = async (order) => {
-  // 1. 弹窗询问 (富文本 HTML 风格)
   const result = await Swal.fire({
     title: '<span class="text-xl font-bold text-slate-800">确认已收到货品？</span>',
     html: `
@@ -117,11 +117,9 @@ const confirmReceipt = async (order) => {
         <div class="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center shadow-inner">
            <span class="text-3xl animate-bounce">📦</span>
         </div>
-        
         <p class="text-sm text-slate-500">
             订单号 <span class="font-mono text-slate-700 font-bold bg-slate-100 px-2 py-0.5 rounded">#${20250000 + order.id}</span>
         </p>
-
         <div class="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl p-4 w-full text-center relative overflow-hidden">
             <div class="absolute -right-4 -top-4 w-12 h-12 bg-orange-200 rounded-full blur-xl opacity-50"></div>
             <p class="text-xs text-orange-600 font-bold mb-1 uppercase tracking-wider">本次签收可得</p>
@@ -130,19 +128,18 @@ const confirmReceipt = async (order) => {
                 <span class="text-xs font-bold mt-2">积分</span>
             </p>
         </div>
-
         <p class="text-xs text-slate-400">保障提示：确认收货后资金将结算给商家</p>
       </div>
     `,
     showCancelButton: true,
     confirmButtonText: '确认签收 & 领积分',
     cancelButtonText: '还没收到',
-    confirmButtonColor: '#4F46E5', // Indigo-600 (匹配主题色)
-    cancelButtonColor: '#94a3b8', // Slate-400
+    confirmButtonColor: '#4F46E5',
+    cancelButtonColor: '#94a3b8',
     focusConfirm: false,
-    reverseButtons: true, // 让确认按钮在右边
+    reverseButtons: true,
     customClass: {
-      popup: 'rounded-[32px] p-6', // 更圆润的弹窗
+      popup: 'rounded-[32px] p-6',
       actions: 'gap-4',
       confirmButton: 'px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200',
       cancelButton: 'px-6 py-3 rounded-xl font-medium'
@@ -151,40 +148,25 @@ const confirmReceipt = async (order) => {
 
   if (!result.isConfirmed) return
 
-  // 2. 执行后端逻辑
   try {
     const updatedUser = await request(`/api/products/order/${order.id}/receive`, { method: 'POST' })
     store.login(updatedUser)
     order.status = '已送达'
 
-    // 3. 成功后的高光反馈
     Swal.fire({
       icon: 'success',
       title: '<span class="text-indigo-600 font-bold">交易完成!</span>',
-      html: `
-        <div class="py-2">
-            <p class="text-slate-500 mb-2">积分已火速到账</p>
-            <div class="inline-block bg-orange-100 text-orange-600 px-4 py-1 rounded-full font-bold">
-                当前积分: ${updatedUser.points}
-            </div>
-        </div>
-      `,
+      html: `<div class="py-2"><p class="text-slate-500 mb-2">积分已火速到账</p><div class="inline-block bg-orange-100 text-orange-600 px-4 py-1 rounded-full font-bold">当前积分: ${updatedUser.points}</div></div>`,
       timer: 2500,
       showConfirmButton: false,
-      customClass: {
-        popup: 'rounded-[32px]'
-      }
+      customClass: { popup: 'rounded-[32px]' }
     })
 
   } catch (e) {
-    Swal.fire({
-      title: '操作失败',
-      text: '网络似乎开了小差，请稍后再试',
-      icon: 'error',
-      customClass: { popup: 'rounded-[24px]' }
-    })
+    Swal.fire({ title: '操作失败', text: '网络似乎开了小差，请稍后再试', icon: 'error', customClass: { popup: 'rounded-[24px]' } })
   }
 }
+
 const deleteOrder = async (id) => {
   if ((await Swal.fire({ title: '删除订单?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' })).isConfirmed) {
     try { await request(`/api/products/order/${id}`, { method: 'DELETE' }); orders.value = orders.value.filter(o => o.id !== id); } catch (e) { }
@@ -246,14 +228,13 @@ const getStatusColor = (s) => {
             </svg>
           </div>
           <div>
-            <h1 class="text-2xl font-black text-slate-800 tracking-tight">我的空间</h1>
+            <h1 class="text-2xl font-black text-slate-800 tracking-tight">空间</h1>
             <p class="text-sm text-slate-500">欢迎回来，尊贵的会员</p>
           </div>
         </div>
         <button @click="router.push('/')"
-          class="px-6 py-2.5 bg-white/80 backdrop-blur-xl border border-white/50 text-slate-600 rounded-full text-sm font-bold shadow-sm hover:shadow-md hover:scale-105 transition-all duration-300">
-          返回商城 ➜
-        </button>
+          class="px-6 py-2.5 bg-white/80 backdrop-blur-xl border border-white/50 text-slate-600 rounded-full text-sm font-bold shadow-sm hover:shadow-md hover:scale-105 transition-all duration-300">返回商城
+          ➜</button>
       </header>
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -288,15 +269,19 @@ const getStatusColor = (s) => {
               <div class="grid grid-cols-3 gap-4 w-full mt-8 border-t border-white/10 pt-6">
                 <div class="text-center">
                   <div class="text-xl font-bold font-serif-sc">{{ orders.length }}</div>
-                  <div class="text-[10px] opacity-70 mt-1 uppercase">Orders</div>
+                  <div class="text-[10px] opacity-70 mt-1 uppercase">订单</div>
                 </div>
-                <div class="text-center cursor-pointer" @click="router.push('/coupon')">
+
+                <div class="text-center cursor-pointer hover:bg-white/10 rounded-lg transition-colors p-1"
+                  @click="router.push('/coupon')">
                   <div class="text-xl font-bold font-serif-sc text-orange-300">{{ couponCount }}</div>
-                  <div class="text-[10px] opacity-70 mt-1 uppercase">Coupons</div>
+                  <div class="text-[10px] opacity-70 mt-1 uppercase">优惠券</div>
                 </div>
-                <div class="text-center">
+
+                <div class="text-center cursor-pointer hover:bg-white/10 rounded-lg transition-colors p-1"
+                  @click="router.push('/points')">
                   <div class="text-xl font-bold font-serif-sc">{{ store.currentUser?.points || 0 }}</div>
-                  <div class="text-[10px] opacity-70 mt-1 uppercase">Points</div>
+                  <div class="text-[10px] opacity-70 mt-1 uppercase">积分</div>
                 </div>
               </div>
             </div>
@@ -321,8 +306,7 @@ const getStatusColor = (s) => {
               </div>
               <div v-if="afterSalesOrders.length > 0"
                 class="ml-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{{ afterSalesOrders.length
-                }}
-              </div>
+                }}</div>
             </button>
 
             <button @click="activeTab = 'address'" :class="['nav-btn group', activeTab === 'address' ? 'active' : '']">
@@ -338,14 +322,12 @@ const getStatusColor = (s) => {
         <main class="lg:col-span-8 min-h-[500px]">
 
           <div v-if="activeTab === 'orders'" class="space-y-6 animate-fade-in-up" style="animation-delay: 0.2s;">
-
             <div class="relative group">
-              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><svg
+                  class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
-              </div>
+                </svg></div>
               <input v-model="searchQuery" type="text"
                 class="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm focus:shadow-lg focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-slate-400 font-medium"
                 placeholder="搜索订单号 / 商品名称...">
@@ -358,7 +340,6 @@ const getStatusColor = (s) => {
 
             <div v-for="order in paginatedOrders" :key="order.id"
               class="bg-white/90 backdrop-blur-xl rounded-[24px] p-6 shadow-sm border border-white hover:shadow-xl hover:border-indigo-100 transition-all duration-300 group relative overflow-hidden">
-
               <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
                 <div class="flex items-center gap-3">
                   <div
@@ -386,7 +367,6 @@ const getStatusColor = (s) => {
                       </div>
                     </div>
                   </div>
-
                   <div class="relative pt-2 pl-1 pr-4">
                     <div class="h-1 bg-slate-100 rounded-full w-full overflow-hidden">
                       <div class="h-full bg-indigo-500 rounded-full transition-all duration-1000"
@@ -399,7 +379,6 @@ const getStatusColor = (s) => {
                     </div>
                   </div>
                 </div>
-
                 <div class="sm:border-l sm:border-slate-50 sm:pl-6 flex flex-row sm:flex-col justify-end gap-2">
                   <button v-if="order.status === '已送达'" @click="openRefundModal(order)"
                     class="text-xs text-slate-400 hover:text-indigo-600 px-2 py-1 sm:text-right">申请售后</button>
@@ -497,18 +476,28 @@ const getStatusColor = (s) => {
         <div class="space-y-4">
           <input v-model="newAddress.contact" placeholder="联系人" class="input-field">
           <input v-model="newAddress.phone" placeholder="手机号" class="input-field">
-          <div class="relative"><textarea v-model="newAddress.detail" placeholder="详细地址"
-              class="input-field h-24 pt-3 resize-none"></textarea><button @click="locateUser"
-              class="absolute bottom-3 right-3 text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-600 transition font-bold flex items-center gap-1">📍
-              定位</button></div>
-          <div class="flex gap-2"><span v-for="t in ['家', '公司', '学校']" :key="t" @click="newAddress.tag = t"
+          <div class="relative">
+            <textarea v-model="newAddress.detail" placeholder="详细地址"
+              class="input-field h-24 pt-3 resize-none"></textarea>
+            <button @click="locateUser"
+              class="absolute right-3 top-3 z-10 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold flex items-center gap-1 hover:bg-blue-100 transition"
+              :disabled="isLocating">
+              <span v-if="isLocating" class="animate-bounce"><img src="/icons/location.png"
+                  class="w-5 h-5 object-contain" alt="定位中" /></span>
+              <span v-else><img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位" /></span>
+              <span>{{ isLocating ? '定位中...' : '定位' }}</span>
+            </button>
+          </div>
+          <div class="flex gap-2">
+            <span v-for="t in ['家', '公司', '学校']" :key="t" @click="newAddress.tag = t"
               :class="['text-xs px-4 py-2 rounded-xl cursor-pointer border transition font-medium', newAddress.tag === t ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100']">{{
-              t }}</span>
+                t }}</span>
           </div>
         </div>
-        <div class="flex gap-3 mt-8"><button @click="showAddressModal = false"
-            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button><button
-            @click="saveAddress"
+        <div class="flex gap-3 mt-8">
+          <button @click="showAddressModal = false"
+            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button>
+          <button @click="saveAddress"
             class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition font-bold transform active:scale-95">保存</button>
         </div>
       </div>
@@ -527,20 +516,25 @@ const getStatusColor = (s) => {
           </div>
         </div>
         <div class="space-y-4">
-          <div><label class="text-xs font-bold text-slate-500 mb-1 block">售后类型</label>
-            <div class="flex gap-2"><button @click="refundForm.type = '仅退款'"
-                :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '仅退款' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">仅退款</button><button
-                @click="refundForm.type = '退款退货'"
+          <div>
+            <label class="text-xs font-bold text-slate-500 mb-1 block">售后类型</label>
+            <div class="flex gap-2">
+              <button @click="refundForm.type = '仅退款'"
+                :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '仅退款' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">仅退款</button>
+              <button @click="refundForm.type = '退款退货'"
                 :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '退款退货' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">退货退款</button>
             </div>
           </div>
-          <div><label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label><textarea
-              v-model="refundForm.reason" placeholder="请描述您遇到的问题..." class="input-field h-24 resize-none"></textarea>
+          <div>
+            <label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label>
+            <textarea v-model="refundForm.reason" placeholder="请描述您遇到的问题..."
+              class="input-field h-24 resize-none"></textarea>
           </div>
         </div>
-        <div class="flex gap-3 mt-8"><button @click="showRefundModal = false"
-            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button><button
-            @click="submitRefund"
+        <div class="flex gap-3 mt-8">
+          <button @click="showRefundModal = false"
+            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button>
+          <button @click="submitRefund"
             class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 transition font-bold">提交申请</button>
         </div>
       </div>
@@ -550,7 +544,6 @@ const getStatusColor = (s) => {
 </template>
 
 <style scoped>
-/* 核心修复：将 group 类移除，改用普通的 CSS 写法 */
 .nav-btn {
   @apply w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 hover:bg-white/50 text-slate-500;
 }
@@ -565,6 +558,19 @@ const getStatusColor = (s) => {
 
 .empty-state {
   @apply h-full flex flex-col items-center justify-center bg-white/60 rounded-[32px] border border-dashed border-slate-300 p-12 min-h-[300px];
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background-color: transparent;
 }
 
 .animate-blob {

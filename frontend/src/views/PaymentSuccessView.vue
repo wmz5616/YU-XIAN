@@ -7,7 +7,7 @@ const route = useRoute()
 const payMethod = computed(() => route.query.method || 'alipay')
 
 const payInfo = computed(() => {
-  if (payMethod.value === 'wechat') {
+  if (payMethod.value === 'wechatpay') {
     return { name: '微信支付', color: 'text-[#07C160]', bg: 'bg-[#07C160]/10' }
   }
   return { name: '支付宝', color: 'text-[#1677FF]', bg: 'bg-[#1677FF]/10' }
@@ -41,7 +41,7 @@ const payInfo = computed(() => {
           <span>支付方式</span>
           <div class="flex items-center gap-2 font-bold text-slate-800">
             <img v-if="payMethod === 'alipay'" src="/icons/alipay.png" class="w-6 h-6 object-contain">
-            <img v-else src="/icons/wechat.png" class="w-6 h-6 object-contain">
+            <img v-else src="/icons/wechatpay.png" class="w-6 h-6 object-contain">
             {{ payInfo.name }}
           </div>
         </div>

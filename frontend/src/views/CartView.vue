@@ -1,192 +1,317 @@
 <script setup>
-import { computed, onMounted } from 'vue'
-import { store } from '../store.js'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import Swal from 'sweetalert2'
+import { store } from '../store.js' // 确保路径正确
+import { request } from '@/utils/request'
+import QuickViewModal from '../components/QuickViewModal.vue'
 
 const router = useRouter()
+const recommendations = ref([])
+const showModal = ref(false)
+const selectedProduct = ref(null)
 
-// ✅ 确保引用的是 store.cart
-const cartItems = computed(() => store.cart || [])
+// ✅ 1. 勾选逻辑状态
+// 默认全选：存储被选中的商品 ID
+const selectedIds = ref(new Set())
 
-const subTotal = computed(() => {
-  return cartItems.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
+// 初始化时全选
+const initSelection = () => {
+  store.cart.forEach(item => selectedIds.value.add(item.id))
+}
+
+// 切换单个选中状态
+const toggleSelection = (id) => {
+  if (selectedIds.value.has(id)) {
+    selectedIds.value.delete(id)
+  } else {
+    selectedIds.value.add(id)
+  }
+}
+
+// 全选/取消全选
+const toggleAll = () => {
+  if (selectedIds.value.size === store.cart.length) {
+    selectedIds.value.clear()
+  } else {
+    store.cart.forEach(item => selectedIds.value.add(item.id))
+  }
+}
+
+const isAllSelected = computed(() => {
+  return store.cart.length > 0 && selectedIds.value.size === store.cart.length
 })
 
-const freight = computed(() => subTotal.value > 200 ? 0 : 20)
-const total = computed(() => subTotal.value + freight.value)
+// ✅ 2. 价格计算逻辑 (只算选中的)
+const selectedItems = computed(() => {
+  return store.cart.filter(item => selectedIds.value.has(item.id))
+})
 
-// 现在的 store 已经有了这个方法
-const updateQuantity = (id, delta) => {
-  store.updateCartItem(id, delta)
+const itemsTotal = computed(() => {
+  return selectedItems.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
+})
+
+const shippingFee = computed(() => {
+  // 满 200 免运费
+  return itemsTotal.value >= 200 ? 0 : 20
+})
+
+const finalTotal = computed(() => {
+  return itemsTotal.value + shippingFee.value
+})
+
+// ✅ 3. 免运费进度条逻辑
+const FREE_SHIPPING_THRESHOLD = 200
+const progressPercentage = computed(() => {
+  const percent = (itemsTotal.value / FREE_SHIPPING_THRESHOLD) * 100
+  return Math.min(percent, 100)
+})
+
+const diffForFreeShipping = computed(() => {
+  return Math.max(0, FREE_SHIPPING_THRESHOLD - itemsTotal.value).toFixed(2)
+})
+
+// 基础操作
+const updateQuantity = (item, change) => {
+  const newQty = item.quantity + change
+  if (newQty > 0) {
+    store.updateCartItem(item.id, newQty)
+  }
 }
 
 const removeItem = (id) => {
-  Swal.fire({
-    title: '移出购物车?',
-    text: "心仪的宝贝可能很快被抢光哦",
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#ef4444',
-    cancelButtonColor: '#cbd5e1',
-    confirmButtonText: '狠心移除',
-    cancelButtonText: '再想想'
-  }).then((result) => {
-    if (result.isConfirmed) {
-      store.removeFromCart(id)
-      Swal.fire('已移除', '', 'success')
-    }
-  })
+  store.removeFromCart(id)
+  selectedIds.value.delete(id) // 移除后同时也从选中集合去掉
 }
 
+// ✅ 修改后的结算函数
 const checkout = () => {
-  if (cartItems.value.length === 0) return Swal.fire('购物车是空的', '快去选购吧', 'warning')
+  if (selectedItems.value.length === 0) {
+    // 使用漂亮的全局通知，而不是丑陋的原生 alert
+    store.showNotification('请至少选择一件商品', 'warning')
+    return
+  }
+  
+  // 🚀 核心修复：移除 alert 弹窗，直接跳转到结算页
+  // 请确保您的 router/index.js 里配置了 path: '/checkout' 的路由
   router.push('/checkout')
 }
 
-// 调试用
+// 获取推荐商品
+const fetchRecommendations = async () => {
+  try {
+    const data = await request('/api/products/recommend')
+    recommendations.value = data.slice(0, 4) // 只取4个
+  } catch (e) { console.error(e) }
+}
+
+// 商品详情跳转
+const goToDetail = (id) => router.push(`/product/${id}`)
+const addToCart = (p, e) => { e.stopPropagation(); store.addToCart(p, e) }
+
 onMounted(() => {
-  console.log("CartView Loaded. Items:", store.cart);
+  initSelection()
+  fetchRecommendations()
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F8FAFC] py-12 px-4 font-sans">
-    <div class="max-w-6xl mx-auto">
+  <div class="min-h-screen bg-[#F8FAFC] pb-20 relative overflow-hidden">
 
-      <div class="flex items-center justify-between mb-8">
-        <h1 class="text-3xl font-black text-slate-800 flex items-center gap-3">
-          🛒 我的购物车
-          <span v-if="cartItems.length > 0"
-            class="text-sm font-medium bg-slate-200 text-slate-600 px-2 py-1 rounded-full">{{ cartItems.length }}</span>
-        </h1>
-        <button v-if="cartItems.length > 0" @click="store.clearCart"
-          class="text-sm text-slate-400 hover:text-red-500 transition">清空购物车</button>
+    <div
+      class="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-blue-50/80 to-transparent pointer-events-none">
+    </div>
+    <div class="absolute -top-20 -right-20 w-96 h-96 bg-blue-200/30 rounded-full blur-3xl animate-pulse"></div>
+    <div class="absolute top-40 -left-20 w-72 h-72 bg-purple-200/30 rounded-full blur-3xl animate-pulse delay-1000">
+    </div>
+
+    <div class="container mx-auto px-4 py-8 relative z-10">
+
+      <div class="flex items-center gap-3 mb-8">
+        <h1 class="text-2xl font-bold text-slate-800">我的购物车</h1>
+        <span class="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs font-bold rounded-full">
+          {{ store.cart.length }} 件商品
+        </span>
       </div>
 
-      <div v-if="cartItems.length === 0"
-        class="bg-white rounded-[32px] p-20 text-center shadow-xl shadow-slate-200/50 border border-white">
-        <div class="w-40 h-40 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 animate-float">
-          <span class="text-6xl opacity-20 grayscale">🛒</span>
-        </div>
-        <h2 class="text-xl font-bold text-slate-800 mb-2">购物车空空如也</h2>
-        <p class="text-slate-400 mb-8">快去挑选您心仪的深海美味吧</p>
-        <button @click="router.push('/')"
-          class="px-10 py-3 bg-slate-900 text-white rounded-full font-bold hover:bg-indigo-600 hover:shadow-lg hover:shadow-indigo-200 transition-all transform hover:-translate-y-1">去逛逛</button>
-      </div>
+      <div class="flex flex-col lg:flex-row gap-8">
 
-      <div v-else class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+        <div class="flex-1 space-y-4">
 
-        <div class="lg:col-span-8 space-y-6">
-          <div v-for="item in cartItems" :key="item.id"
-            class="group bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 hover:shadow-xl hover:border-indigo-100 transition-all duration-300 relative overflow-hidden">
-            <div
-              class="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-indigo-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            </div>
-
-            <div class="flex gap-6 items-center">
-              <div class="relative w-24 h-24 shrink-0">
-                <img :src="item.imageUrl"
-                  class="w-full h-full object-cover rounded-2xl shadow-md bg-slate-50 border border-slate-100 group-hover:scale-105 transition-transform duration-500">
+          <div v-if="store.cart.length > 0"
+            class="bg-white/80 backdrop-blur-xl rounded-2xl p-4 flex items-center gap-3 shadow-sm border border-slate-200/60">
+            <div @click="toggleAll"
+              class="cursor-pointer flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-blue-600 transition">
+              <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors"
+                :class="isAllSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'">
+                <svg v-if="isAllSelected" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor" stroke-width="3">
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
               </div>
+              全选
+            </div>
+          </div>
 
-              <div class="flex-1 min-w-0">
-                <h3 class="font-bold text-lg text-slate-800 mb-1 truncate">{{ item.name }}</h3>
-                <p class="text-xs text-slate-400 mb-4">规格: 标准装 | 配送: 顺丰冷链</p>
+          <div v-if="store.cart.length === 0"
+            class="bg-white/60 backdrop-blur-md rounded-3xl p-16 text-center border border-slate-100 border-dashed">
+            <div class="text-6xl mb-4 opacity-20"></div>
+            <h3 class="text-lg font-bold text-slate-600 mb-2">购物车还是空的</h3>
+            <p class="text-slate-400 text-sm mb-6">快去挑选深海美味吧</p>
+            <button @click="router.push('/')"
+              class="px-8 py-2.5 bg-slate-900 text-white rounded-full font-bold hover:bg-blue-600 transition shadow-lg">
+              去逛逛
+            </button>
+          </div>
 
-                <div class="flex justify-between items-center">
-                  <div class="font-serif-sc font-black text-xl text-indigo-600">¥{{ item.price }}</div>
+          <div v-else class="space-y-4">
+            <div v-for="item in store.cart" :key="item.id"
+              class="group bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/60 shadow-sm hover:shadow-lg transition-all duration-300 flex items-center gap-4">
 
-                  <div class="flex items-center bg-slate-50 rounded-xl border border-slate-200 p-1">
-                    <button @click="updateQuantity(item.id, -1)"
-                      class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm text-slate-500 transition disabled:opacity-30"
-                      :disabled="item.quantity <= 1">-</button>
-                    <input type="text" :value="item.quantity" readonly
-                      class="w-10 text-center bg-transparent font-bold text-slate-700 text-sm outline-none">
-                    <button @click="updateQuantity(item.id, 1)"
-                      class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm text-slate-500 transition">+</button>
-                  </div>
+              <div @click="toggleSelection(item.id)" class="cursor-pointer p-2 -ml-2">
+                <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors"
+                  :class="selectedIds.has(item.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white group-hover:border-blue-400'">
+                  <svg v-if="selectedIds.has(item.id)" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor" stroke-width="3">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
                 </div>
               </div>
 
-              <button @click="removeItem(item.id)"
-                class="absolute top-4 right-4 text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition opacity-0 group-hover:opacity-100">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
-                  </path>
+              <div @click="goToDetail(item.id)"
+                class="w-24 h-24 bg-slate-100 rounded-xl overflow-hidden cursor-pointer border border-slate-100 flex-shrink-0">
+                <img :src="item.imageUrl"
+                  class="w-full h-full object-cover group-hover:scale-110 transition duration-500" />
+              </div>
+
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 @click="goToDetail(item.id)"
+                      class="font-bold text-slate-800 cursor-pointer hover:text-blue-600 transition truncate pr-4">
+                      {{ item.name }}
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-1">规格: 标准装 | 配送: 顺丰冷链</p>
+                  </div>
+                  <button @click="removeItem(item.id)"
+                    class="text-slate-300 hover:text-red-500 transition p-1 opacity-0 group-hover:opacity-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                      stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="flex items-center justify-between mt-4">
+                  <div class="text-blue-600 font-bold text-lg">¥{{ item.price }}</div>
+
+                  <div class="flex items-center bg-slate-50 rounded-lg border border-slate-200">
+                    <button @click="updateQuantity(item, -1)"
+                      class="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 disabled:opacity-50"
+                      :disabled="item.quantity <= 1">-</button>
+                    <span class="w-8 text-center text-sm font-bold text-slate-800">{{ item.quantity }}</span>
+                    <button @click="updateQuantity(item, 1)"
+                      class="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="recommendations.length > 0" class="mt-12">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="text-lg">🔥</span>
+              <h3 class="font-bold text-slate-800">猜你喜欢</h3>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div v-for="rec in recommendations" :key="rec.id" @click="goToDetail(rec.id)"
+                class="group bg-white rounded-xl p-3 border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer">
+                <div class="aspect-square bg-slate-50 rounded-lg overflow-hidden mb-2">
+                  <img :src="rec.imageUrl"
+                    class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                </div>
+                <h4 class="text-xs font-bold text-slate-800 truncate">{{ rec.name }}</h4>
+                <div class="flex justify-between items-center mt-1">
+                  <span class="text-xs font-bold text-blue-600">¥{{ rec.price }}</span>
+                  <button @click="(e) => addToCart(rec, e)"
+                    class="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition">
+                    <span class="text-xs">+</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:w-96 flex-shrink-0">
+          <div class="sticky top-24 space-y-4">
+
+            <div
+              class="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
+              <div class="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
+
+              <div v-if="itemsTotal >= FREE_SHIPPING_THRESHOLD" class="flex items-center gap-2 mb-3">
+                <span class="text-2xl">🎉</span>
+                <div class="font-bold">已享免运费</div>
+              </div>
+              <div v-else class="mb-3">
+                <div class="text-sm text-blue-100 mb-1">再买 <span class="font-bold text-white text-lg">¥{{
+                    diffForFreeShipping }}</span> 免运费</div>
+                <div class="text-xs text-blue-200 opacity-80">去凑单更划算 ></div>
+              </div>
+
+              <div class="h-2 bg-black/20 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-white/90 shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-1000 ease-out"
+                  :style="{ width: `${progressPercentage}%` }"></div>
+              </div>
+            </div>
+
+            <div class="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-slate-200/60 shadow-lg">
+              <h3 class="font-bold text-slate-800 mb-6">订单摘要</h3>
+
+              <div class="space-y-3 mb-6">
+                <div class="flex justify-between text-sm text-slate-500">
+                  <span>商品总额</span>
+                  <span class="font-medium text-slate-800">¥{{ itemsTotal.toFixed(2) }}</span>
+                </div>
+                <div class="flex justify-between text-sm text-slate-500">
+                  <span>运费</span>
+                  <span v-if="shippingFee === 0" class="text-green-600 font-bold">免运费</span>
+                  <span v-else class="font-medium text-slate-800">+ ¥{{ shippingFee }}</span>
+                </div>
+                <div class="flex justify-between text-sm text-slate-500">
+                  <span>优惠券</span>
+                  <span class="text-slate-400">无可用</span>
+                </div>
+              </div>
+
+              <div class="border-t border-slate-100 pt-4 mb-6">
+                <div class="flex justify-between items-end">
+                  <span class="text-slate-600 font-bold">总计</span>
+                  <span class="text-3xl font-bold text-slate-900 tracking-tight">
+                    <span class="text-base align-top mt-2 inline-block">¥</span>{{ finalTotal.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="text-right text-xs text-slate-400 mt-1">已包含增值税</div>
+              </div>
+
+              <button @click="checkout"
+                class="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-blue-600 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="selectedItems.length === 0">
+                去结算
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
               </button>
             </div>
           </div>
         </div>
 
-        <div class="lg:col-span-4 sticky top-8">
-          <div
-            class="bg-white rounded-[32px] p-8 shadow-2xl shadow-indigo-100/50 border border-slate-100 relative overflow-hidden">
-            <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-
-            <h2 class="font-black text-2xl text-slate-800 mb-6">订单摘要</h2>
-
-            <div class="space-y-4 mb-8">
-              <div class="flex justify-between text-slate-500 text-sm">
-                <span>商品总额</span>
-                <span class="font-medium text-slate-900">¥{{ subTotal.toFixed(2) }}</span>
-              </div>
-              <div class="flex justify-between text-slate-500 text-sm">
-                <span>运费</span>
-                <span :class="freight === 0 ? 'text-green-600 font-bold' : 'text-slate-900'">{{ freight === 0 ? '免运费' :
-                  `+ ¥${freight}` }}</span>
-              </div>
-              <div v-if="freight > 0" class="text-xs text-orange-500 bg-orange-50 px-3 py-2 rounded-xl text-center">
-                再买 <span class="font-bold">¥{{ (200 - subTotal).toFixed(2) }}</span> 即可免运费
-              </div>
-            </div>
-
-            <div class="border-t border-dashed border-slate-200 pt-6 mb-8">
-              <div class="flex justify-between items-end">
-                <span class="text-slate-500 font-medium">总计</span>
-                <span class="text-4xl font-black text-indigo-600 font-serif-sc">
-                  <span class="text-lg align-top relative top-1">¥</span>{{ total.toFixed(2) }}
-                </span>
-              </div>
-            </div>
-
-            <button @click="checkout"
-              class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-xl shadow-indigo-200 hover:bg-indigo-600 hover:scale-[1.02] active:scale-95 transition-all duration-300 flex items-center justify-center gap-2 group">
-              去结算
-              <svg class="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor"
-                viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3">
-                </path>
-              </svg>
-            </button>
-
-            <div class="mt-6 flex justify-center gap-4 text-slate-300">
-              <span class="text-xs">支持支付宝 / 微信支付</span>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
+
+    <QuickViewModal :is-open="showModal" :product="selectedProduct" @close="showModal = false" />
   </div>
 </template>
-
-<style scoped>
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-10px);
-  }
-}
-</style>

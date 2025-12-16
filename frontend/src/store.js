@@ -1,18 +1,43 @@
-import { reactive, computed } from "vue";
+import { reactive } from "vue";
 
 // 统一存储 Key
 const CART_KEY = "yuxian_cart";
 const USER_KEY = "yuxian_user";
+const COUPON_KEY = "yuxian_coupons"; // 优惠券存储
+const LOGS_KEY = "yuxian_point_logs"; // 🆕 积分明细存储
 
+// 初始化读取
 const savedUser = JSON.parse(localStorage.getItem(USER_KEY) || "null");
 const savedCart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+const savedCoupons = JSON.parse(localStorage.getItem(COUPON_KEY) || "[]");
+// 🆕 读取积分明细，如果没有记录，给两条默认的
+const savedLogs = JSON.parse(
+  localStorage.getItem(LOGS_KEY) ||
+    JSON.stringify([
+      {
+        id: 1,
+        type: "income",
+        title: "系统奖励",
+        amount: 100,
+        time: new Date().toLocaleString(),
+      },
+      {
+        id: 2,
+        type: "income",
+        title: "首次登录",
+        amount: 50,
+        time: new Date().toLocaleString(),
+      },
+    ])
+);
 
 export const store = reactive({
   // ✅ 核心数据源
   cart: savedCart,
   currentUser: savedUser,
+  myCoupons: savedCoupons,
+  pointLogs: savedLogs, // 🆕 积分明细状态
 
-  // 全局通知 & 动画信号
   notification: { show: false, message: "", type: "success" },
   flySignal: { id: 0, rect: null, img: "" },
 
@@ -27,79 +52,98 @@ export const store = reactive({
       .toFixed(2);
   },
 
-  // --- 核心方法 ---
-
-  // 1. 添加商品
+  // --- 购物车方法 ---
   addToCart(product, event = null) {
     const existingItem = this.cart.find((item) => item.id === product.id);
-
     if (existingItem) {
       existingItem.quantity++;
     } else {
       this.cart.push({
-        ...product, // 保留原商品所有字段
-        id: product.id, // 确保 ID 存在
-        name: product.name,
-        price: product.price,
-        imageUrl: product.imageUrl || "/images/default.jpg",
+        ...product,
+        id: product.id,
         quantity: 1,
+        imageUrl: product.imageUrl || "/images/default.jpg",
       });
     }
-
     this.saveCart();
-
-    // 触发动画或通知
-    if (event) {
-      this.triggerFly(event, product.imageUrl);
-    } else {
-      this.showNotification(`已将 ${product.name} 加入购物车`);
-    }
+    if (event) this.triggerFly(event, product.imageUrl);
+    else this.showNotification(`已将 ${product.name} 加入购物车`);
   },
 
-  // 2. 更新数量 (CartView 专用)
-  updateCartItem(productId, delta) {
+  updateCartItem(productId, quantity) {
     const item = this.cart.find((i) => i.id === productId);
     if (item) {
-      item.quantity += delta;
-      if (item.quantity <= 0) {
-        this.removeFromCart(productId);
-      } else {
-        this.saveCart();
-      }
+      item.quantity = quantity;
+      if (item.quantity <= 0) this.removeFromCart(productId);
+      else this.saveCart();
     }
   },
 
-  // 3. 移除商品
   removeFromCart(productId) {
     this.cart = this.cart.filter((item) => item.id !== productId);
     this.saveCart();
   },
 
-  // 4. 清空购物车
   clearCart() {
     this.cart = [];
     this.saveCart();
   },
 
-  // 5. 持久化
   saveCart() {
     localStorage.setItem(CART_KEY, JSON.stringify(this.cart));
   },
 
-  // --- 兼容性方法 (修复报错的关键) ---
+  // --- 🎟️ 优惠券逻辑 (确保字段匹配) ---
+  addCoupon(coupon) {
+    const newCoupon = {
+      id: Date.now(),
+      couponName: coupon.name, // 👈 关键映射：把 name 转为 couponName
+      amount: coupon.amount,
+      minSpend: coupon.amount * 10,
+      status: "UNUSED",
+      receiveTime: new Date().toISOString(), // 存 ISO 格式方便后续处理
+      type: "EXCHANGE",
+    };
+    this.myCoupons.unshift(newCoupon);
+    this.saveCoupons();
+  },
 
-  // ✅ 修复：补充 getProductCount 方法
+  saveCoupons() {
+    localStorage.setItem(COUPON_KEY, JSON.stringify(this.myCoupons));
+  },
+
+  // --- 📝 积分明细逻辑 (保留最近5条) ---
+  addPointLog(log) {
+    const newLog = {
+      id: Date.now(),
+      time: new Date().toLocaleString(),
+      ...log,
+    };
+
+    this.pointLogs.unshift(newLog); // 加到最前面
+
+    // ✅ 限制只保留最近 5 条
+    if (this.pointLogs.length > 5) {
+      this.pointLogs = this.pointLogs.slice(0, 5);
+    }
+
+    this.savePointLogs();
+  },
+
+  savePointLogs() {
+    localStorage.setItem(LOGS_KEY, JSON.stringify(this.pointLogs));
+  },
+
+  // --- 其他辅助 ---
   getProductCount(productId) {
     const item = this.cart.find((item) => item.id === productId);
     return item ? item.quantity : 0;
   },
 
-  // ✅ 修复：补充 decreaseItem 方法 (部分旧组件可能在用)
   decreaseItem(productId) {
-    this.updateCartItem(productId, -1);
+    const item = this.cart.find((item) => item.id === productId);
+    if (item) this.updateCartItem(productId, item.quantity - 1);
   },
-
-  // --- 辅助功能 ---
 
   triggerFly(event, imgUrl) {
     if (!event || !event.target) return;
@@ -116,33 +160,25 @@ export const store = reactive({
 
   login(user) {
     this.currentUser = user;
-
-    // 创建一个“瘦身版”的用户对象用于存储
-    // 我们只存基本信息，不存巨大的 Base64 头像，防止 LocalStorage 爆满
     const userToSave = { ...user };
-
-    // 如果头像数据太长（说明是 Base64），就不存到本地缓存里
-    // 页面刷新后，ProfileView 会通过 API 重新拉取最新的头像
-    if (userToSave.avatar && userToSave.avatar.length > 200) {
-      userToSave.avatar = null; // 或者设置为一个默认的小图片 URL
-    }
-
+    if (userToSave.avatar && userToSave.avatar.length > 200)
+      userToSave.avatar = null;
     try {
-      localStorage.setItem("yuxian_user", JSON.stringify(userToSave));
+      localStorage.setItem(USER_KEY, JSON.stringify(userToSave));
       this.showNotification(`欢迎回来，${user.displayName || user.username}！`);
     } catch (e) {
-      console.error("缓存写入失败:", e);
-      this.showNotification(
-        "登录成功（但缓存已满，下次需重新登录）",
-        "warning"
-      );
+      console.error(e);
     }
   },
 
   logout() {
     this.currentUser = null;
-    this.clearCart(); // 退出登录清空购物车
+    this.myCoupons = [];
+    this.pointLogs = [];
+    this.clearCart();
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(COUPON_KEY);
+    localStorage.removeItem(LOGS_KEY);
     this.showNotification("您已安全退出", "success");
   },
 
