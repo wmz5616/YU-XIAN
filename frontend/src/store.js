@@ -3,14 +3,15 @@ import { reactive } from "vue";
 // 统一存储 Key
 const CART_KEY = "yuxian_cart";
 const USER_KEY = "yuxian_user";
-const COUPON_KEY = "yuxian_coupons"; // 优惠券存储
-const LOGS_KEY = "yuxian_point_logs"; // 🆕 积分明细存储
+const COUPON_KEY = "yuxian_coupons";
+const LOGS_KEY = "yuxian_point_logs";
 
 // 初始化读取
 const savedUser = JSON.parse(localStorage.getItem(USER_KEY) || "null");
 const savedCart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
 const savedCoupons = JSON.parse(localStorage.getItem(COUPON_KEY) || "[]");
-// 🆕 读取积分明细，如果没有记录，给两条默认的
+
+// 初始化积分明细：如果没有记录，给两条默认的演示数据
 const savedLogs = JSON.parse(
   localStorage.getItem(LOGS_KEY) ||
     JSON.stringify([
@@ -32,11 +33,11 @@ const savedLogs = JSON.parse(
 );
 
 export const store = reactive({
-  // ✅ 核心数据源
+  // --- 核心数据源 ---
   cart: savedCart,
   currentUser: savedUser,
   myCoupons: savedCoupons,
-  pointLogs: savedLogs, // 🆕 积分明细状态
+  pointLogs: savedLogs,
 
   notification: { show: false, message: "", type: "success" },
   flySignal: { id: 0, rect: null, img: "" },
@@ -52,7 +53,7 @@ export const store = reactive({
       .toFixed(2);
   },
 
-  // --- 购物车方法 ---
+  // --- 🛒 购物车方法 ---
   addToCart(product, event = null) {
     const existingItem = this.cart.find((item) => item.id === product.id);
     if (existingItem) {
@@ -93,36 +94,28 @@ export const store = reactive({
     localStorage.setItem(CART_KEY, JSON.stringify(this.cart));
   },
 
-  // --- 🎟️ 优惠券逻辑 (确保字段匹配) ---
-  addCoupon(coupon) {
-    const newCoupon = {
-      id: Date.now(),
-      couponName: coupon.name, // 👈 关键映射：把 name 转为 couponName
-      amount: coupon.amount,
-      minSpend: coupon.amount * 10,
-      status: "UNUSED",
-      receiveTime: new Date().toISOString(), // 存 ISO 格式方便后续处理
-      type: "EXCHANGE",
-    };
-    this.myCoupons.unshift(newCoupon);
-    this.saveCoupons();
+  // --- 👤 用户 & 积分管理 (新增核心修复) ---
+
+  // 1. 扣除积分并同步保存
+  deductPoints(amount) {
+    if (this.currentUser) {
+      this.currentUser.points = (this.currentUser.points || 0) - amount;
+      localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser));
+    }
   },
 
-  saveCoupons() {
-    localStorage.setItem(COUPON_KEY, JSON.stringify(this.myCoupons));
-  },
-
-  // --- 📝 积分明细逻辑 (保留最近5条) ---
+  // 2. 增加积分明细 (保留最近5条)
   addPointLog(log) {
     const newLog = {
       id: Date.now(),
       time: new Date().toLocaleString(),
-      ...log,
+      ...log, // 传入 type, title, amount
     };
 
-    this.pointLogs.unshift(newLog); // 加到最前面
+    // 插入到数组最前面
+    this.pointLogs.unshift(newLog);
 
-    // ✅ 限制只保留最近 5 条
+    // ✂️ 核心修复：截取前5条
     if (this.pointLogs.length > 5) {
       this.pointLogs = this.pointLogs.slice(0, 5);
     }
@@ -132,6 +125,26 @@ export const store = reactive({
 
   savePointLogs() {
     localStorage.setItem(LOGS_KEY, JSON.stringify(this.pointLogs));
+  },
+
+  // --- 🎟️ 优惠券逻辑 ---
+  // 3. 兑换/领取优惠券
+  addCoupon(coupon) {
+    const newCoupon = {
+      id: Date.now(), // 生成唯一ID
+      couponName: coupon.name, // 确保字段映射正确
+      amount: coupon.amount,
+      minSpend: coupon.amount * 10, // 默认门槛为面额10倍
+      status: "UNUSED",
+      receiveTime: new Date().toISOString(),
+      type: "EXCHANGE", // 标记为兑换类型
+    };
+    this.myCoupons.unshift(newCoupon);
+    this.saveCoupons();
+  },
+
+  saveCoupons() {
+    localStorage.setItem(COUPON_KEY, JSON.stringify(this.myCoupons));
   },
 
   // --- 其他辅助 ---
@@ -160,9 +173,11 @@ export const store = reactive({
 
   login(user) {
     this.currentUser = user;
-    const userToSave = { ...user };
-    if (userToSave.avatar && userToSave.avatar.length > 200)
-      userToSave.avatar = null;
+    // 登录时如果不包含积分字段，初始化为0
+    if (this.currentUser.points === undefined) {
+      this.currentUser.points = 0;
+    }
+    const userToSave = { ...this.currentUser };
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(userToSave));
       this.showNotification(`欢迎回来，${user.displayName || user.username}！`);

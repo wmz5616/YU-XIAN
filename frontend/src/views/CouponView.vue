@@ -2,16 +2,17 @@
 import { ref, onMounted } from 'vue';
 import { request } from '@/utils/request';
 import Swal from 'sweetalert2';
+import { store } from '../store.js'; // 1. 引入 store
 
-// 获取当前用户
-const userStr = localStorage.getItem('yuxian_user');
-const currentUser = userStr ? JSON.parse(userStr) : null;
+// 2. 获取当前用户 (优先从 store 获取，保持状态同步)
+const currentUser = store.currentUser || JSON.parse(localStorage.getItem('yuxian_user') || 'null');
 
 const activeTab = ref('market');
 const marketCoupons = ref([]);
 const myCoupons = ref([]);
 const loading = ref(false);
 
+// 获取市场可领取的优惠券
 const fetchMarket = async () => {
     if (!currentUser) return;
     loading.value = true;
@@ -21,31 +22,51 @@ const fetchMarket = async () => {
     } catch (e) { console.error(e); } finally { loading.value = false; }
 };
 
+// 获取我的优惠券 (包含：API数据 + 本地积分兑换数据)
 const fetchMy = async () => {
     if (!currentUser) return;
     loading.value = true;
     try {
+        // A. 从后端获取
         const res = await request.get(`/api/coupons/my?username=${currentUser.username}`);
-        myCoupons.value = res || [];
-    } catch (e) { console.error(e); } finally { loading.value = false; }
+        const remoteCoupons = res || [];
+
+        // B. 从本地 Store 获取 (积分兑换的)
+        const localCoupons = store.myCoupons || [];
+
+        // C. 合并展示 (本地的排在前面)
+        myCoupons.value = [...localCoupons, ...remoteCoupons];
+    } catch (e) {
+        console.error(e);
+    } finally {
+        loading.value = false;
+    }
 };
 
+// 领取优惠券
 const handleReceive = async (id) => {
     try {
         await request.post(`/api/coupons/${id}/receive`, { username: currentUser.username });
         Swal.fire({ icon: 'success', title: '🎉 领取成功!', timer: 1500, showConfirmButton: false });
         fetchMarket();
+        fetchMy(); // 领取后同时也刷新一下我的卡包
     } catch (e) { Swal.fire('领取失败', e.message, 'error'); }
 };
 
+// 3. ✅ 恢复之前遗漏的切换 Tab 函数
 const switchTab = (tab) => {
     activeTab.value = tab;
-    if (tab === 'market') fetchMarket(); else fetchMy();
+    if (tab === 'market') {
+        fetchMarket();
+    } else {
+        fetchMy();
+    }
 };
 
 onMounted(() => {
     if (!currentUser) return;
     fetchMarket();
+    fetchMy(); // 初始加载也获取一下我的优惠券
 });
 </script>
 

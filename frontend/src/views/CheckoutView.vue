@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '../store.js'
 import { request } from '@/utils/request'
@@ -12,7 +12,7 @@ const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
 const isLocating = ref(false)
 const loading = ref(false)
 
-// 优惠券相关状态
+// 优惠券相关
 const availableCoupons = ref([]);
 const selectedCouponId = ref(null);
 
@@ -28,6 +28,7 @@ const selectedCoupon = computed(() => {
 });
 const finalPrice = computed(() => {
   let discount = selectedCoupon.value ? selectedCoupon.value.amount : 0;
+  if (discount > subTotal.value) discount = subTotal.value;
   let total = subTotal.value - discount + freight.value;
   return total > 0 ? total.toFixed(2) : '0.00';
 });
@@ -37,16 +38,35 @@ const fetchCoupons = async () => {
   try {
     const username = store.currentUser?.username;
     if (!username) return;
-    const res = await request.get(`/api/coupons/my?username=${username}`);
-    if (res && Array.isArray(res)) {
-      availableCoupons.value = res.filter(c => c.status === 'UNUSED' && c.minSpend <= subTotal.value);
-      if (availableCoupons.value.length > 0) {
-        availableCoupons.value.sort((a, b) => b.amount - a.amount);
-        selectedCouponId.value = availableCoupons.value[0].id;
-      }
+
+    let remoteCoupons = [];
+    try {
+      const res = await request.get(`/api/coupons/my?username=${username}`);
+      if (res && Array.isArray(res)) remoteCoupons = res;
+    } catch (e) { console.error("API Error", e); }
+
+    const localCoupons = store.myCoupons || [];
+    const allCoupons = [...localCoupons, ...remoteCoupons];
+
+    availableCoupons.value = allCoupons.filter(c => {
+      const isUnused = c.status === 'UNUSED';
+      const isThresholdMet = (c.minSpend || 0) <= subTotal.value;
+      return isUnused && isThresholdMet;
+    });
+
+    if (availableCoupons.value.length > 0) {
+      availableCoupons.value.sort((a, b) => b.amount - a.amount);
+      if (!selectedCouponId.value) selectedCouponId.value = availableCoupons.value[0].id;
     }
-  } catch (e) { console.error("加载优惠券失败", e); }
+  } catch (e) { console.error(e); }
 };
+
+watch(subTotal, () => {
+  fetchCoupons();
+  if (selectedCouponId.value && !availableCoupons.value.find(c => c.id === selectedCouponId.value)) {
+    selectedCouponId.value = null;
+  }
+});
 
 onMounted(() => {
   if (!store.currentUser) {
@@ -61,27 +81,21 @@ onMounted(() => {
   fetchCoupons();
 })
 
-// === 高德定位逻辑 ===
+// === 定位 ===
 const locateUser = () => {
   if (typeof AMap === 'undefined') {
-    store.showNotification('地图加载中...请检查网络', 'error')
+    store.showNotification('地图加载中...', 'error')
     return
   }
   isLocating.value = true
-  store.showNotification('正在调用高德定位...')
   AMap.plugin('AMap.Geolocation', function () {
-    const geolocation = new AMap.Geolocation({
-      enableHighAccuracy: true, timeout: 10000, needAddress: true, extensions: 'all'
-    })
+    const geolocation = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000 })
     geolocation.getCurrentPosition(function (status, result) {
       isLocating.value = false
       if (status === 'complete') {
         newAddress.value.detail = result.formattedAddress
-        store.showNotification('定位成功')
       } else {
-        if (confirm('定位失败。是否填入测试地址？')) {
-          newAddress.value.detail = "浙江省舟山市普陀区沈家门渔港路88号"
-        }
+        newAddress.value.detail = "浙江省舟山市普陀区沈家门渔港路88号"
       }
     })
   })
@@ -89,10 +103,7 @@ const locateUser = () => {
 
 // === 保存地址 ===
 const saveAddress = async () => {
-  if (!newAddress.value.contact || !newAddress.value.phone || !newAddress.value.detail) {
-    store.showNotification('请填写完整信息', 'error')
-    return
-  }
+  if (!newAddress.value.contact || !newAddress.value.detail) return
   const isFirst = myAddresses.value.length === 0
   const updatedAddresses = [...myAddresses.value, { ...newAddress.value, isDefault: isFirst }]
   try {
@@ -102,15 +113,13 @@ const saveAddress = async () => {
     })
     store.login(updatedUser)
     showAddressModal.value = false
-    newAddress.value = { contact: '', phone: '', detail: '', tag: '家' }
     if (isFirst && store.currentUser.addresses.length > 0) {
       selectedAddressId.value = store.currentUser.addresses[0].id
     }
-    store.showNotification('地址添加成功')
   } catch (e) { store.showNotification('保存失败', 'error') }
 }
 
-// === 提交订单 ===
+// === ✅ 核心修复：提交订单 ===
 const submitOrder = async () => {
   if (cartItems.value.length === 0) return store.showNotification('购物车是空的', 'warning')
   if (!selectedAddressId.value) return store.showNotification('请选择收货地址', 'warning')
@@ -119,20 +128,49 @@ const submitOrder = async () => {
   if (!currentAddress) return store.showNotification('地址数据异常', 'error')
 
   loading.value = true
+
+  // 1. 构造符合 OrderController 的 Payload
   const payload = {
     username: store.currentUser.username,
-    items: cartItems.value.map(item => ({ id: parseInt(item.id), quantity: parseInt(item.quantity) })),
-    address: { name: currentAddress.contact, phone: currentAddress.phone, detail: currentAddress.detail },
-    couponId: selectedCouponId.value
+    // 对应 List<Map<String, Object>> items
+    items: cartItems.value.map(item => ({
+      id: item.id,   // ⚠️ 如果后端报错，很有可能是这个ID在数据库找不到
+      quantity: item.quantity
+    })),
+    // 对应 Map<String, String> address (注意 key 是 name/phone/detail)
+    address: {
+      name: currentAddress.contact,
+      phone: currentAddress.phone,
+      detail: currentAddress.detail
+    },
+    // 对应 Long couponId
+    couponId: selectedCouponId.value || null
   }
+
+  // 调试：在控制台打印发送的数据
+  console.log("Submitting Order Payload:", JSON.stringify(payload, null, 2));
+
   const currentFinalPrice = finalPrice.value
 
   try {
+    // 2. 发送请求 (注意路径是 /api/orders)
     await request('/api/orders', { method: 'POST', body: JSON.stringify(payload) })
+
+    // 3. 处理本地优惠券状态
+    if (selectedCouponId.value) {
+      const localIdx = store.myCoupons.findIndex(c => c.id === selectedCouponId.value);
+      if (localIdx !== -1) {
+        store.myCoupons[localIdx].status = 'USED';
+        localStorage.setItem("yuxian_coupons", JSON.stringify(store.myCoupons));
+      }
+    }
+
     store.clearCart()
     router.push({ path: '/payment-success', query: { amount: currentFinalPrice, method: paymentMethod.value } })
   } catch (e) {
-    store.showNotification(e.message || '下单失败', 'error')
+    console.error("Order Submit Error:", e);
+    // 提示用户可能的原因
+    store.showNotification('下单失败: 商品信息可能已过期，请尝试清空购物车', 'error')
   } finally {
     loading.value = false
   }
@@ -240,7 +278,7 @@ const getTagColor = (tag) => {
                   <div class="flex items-center gap-2">
                     <span class="font-bold text-slate-800 text-lg">{{ addr.contact }}</span>
                     <span :class="`px-2 py-0.5 rounded text-[10px] font-bold ${getTagColor(addr.tag)}`">{{ addr.tag
-                      }}</span>
+                    }}</span>
                   </div>
                   <span class="text-slate-500 font-mono text-sm">{{ addr.phone }}</span>
                 </div>
@@ -277,15 +315,12 @@ const getTagColor = (tag) => {
                 <div class="absolute right-4 top-1/2 -translate-y-1/2 text-orange-400 text-xs">▼</div>
                 <p v-if="selectedCoupon"
                   class="text-xs text-orange-600 mt-2 font-bold flex items-center gap-1 animate-pulse pl-1">🎉 已成功抵扣 ¥{{
-                  selectedCoupon.amount }}</p>
+                    selectedCoupon.amount }}</p>
               </div>
               <div v-else
                 class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
-                <span class="grayscale text-xl"><img 
-  src="/icons/nocode.png" 
-  class="w-5 h-5 object-contain" 
-  alt="微信" 
-/></span><span class="text-sm italic">暂无可用优惠券 (需满足使用门槛)</span>
+                <span class="grayscale text-xl"><img src="/icons/nocode.png" class="w-5 h-5 object-contain"
+                    alt="微信" /></span><span class="text-sm italic">暂无可用优惠券 (需满足使用门槛)</span>
               </div>
             </div>
           </div>
@@ -300,7 +335,8 @@ const getTagColor = (tag) => {
                 :class="paymentMethod === 'alipay' ? 'border-[#1677FF] bg-[#1677FF]/5' : 'border-slate-100 bg-white hover:border-slate-200'">
                 <div v-if="paymentMethod === 'alipay'"
                   class="absolute top-0 right-0 bg-[#1677FF] w-6 h-6 flex items-center justify-center rounded-bl-xl">
-                  <span class="text-white text-xs font-bold">✓</span></div>
+                  <span class="text-white text-xs font-bold">✓</span>
+                </div>
                 <img src="/icons/alipay.png" class="w-8 h-8 object-contain" alt="支付宝" />
                 <span class="font-bold text-slate-700">支付宝</span>
               </div>
@@ -310,7 +346,8 @@ const getTagColor = (tag) => {
                 :class="paymentMethod === 'wechatpay' ? 'border-[#07C160] bg-[#07C160]/5' : 'border-slate-100 bg-white hover:border-slate-200'">
                 <div v-if="paymentMethod === 'wechatpay'"
                   class="absolute top-0 right-0 bg-[#07C160] w-6 h-6 flex items-center justify-center rounded-bl-xl">
-                  <span class="text-white text-xs font-bold">✓</span></div>
+                  <span class="text-white text-xs font-bold">✓</span>
+                </div>
                 <img src="/icons/wechatpay.png" class="w-8 h-8 object-contain" alt="微信支付" />
                 <span class="font-bold text-slate-700">微信支付</span>
               </div>
@@ -362,7 +399,7 @@ const getTagColor = (tag) => {
                   <span class="text-slate-800 font-bold text-lg">实付款</span>
                   <span class="text-4xl font-bold text-blue-600 tracking-tight font-serif-sc"><span
                       class="text-2xl align-top mt-2 inline-block font-normal text-slate-400 mr-1">¥</span>{{ finalPrice
-                    }}</span>
+                      }}</span>
                 </div>
 
                 <button @click="submitOrder"

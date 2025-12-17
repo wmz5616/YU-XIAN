@@ -1,9 +1,11 @@
 package com.yuxian.backend.controller;
 
 import com.yuxian.backend.entity.Coupon;
+import com.yuxian.backend.entity.User;
 import com.yuxian.backend.entity.UserCoupon;
 import com.yuxian.backend.repository.CouponRepository;
 import com.yuxian.backend.repository.UserCouponRepository;
+import com.yuxian.backend.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,36 +21,35 @@ public class CouponController {
 
     private final CouponRepository couponRepository;
     private final UserCouponRepository userCouponRepository;
+    private final UserRepository userRepository; // ✅ 新增：需要操作用户积分
 
-    public CouponController(CouponRepository couponRepository, UserCouponRepository userCouponRepository) {
+    // ✅ 构造函数注入 UserRepository
+    public CouponController(CouponRepository couponRepository,
+            UserCouponRepository userCouponRepository,
+            UserRepository userRepository) {
         this.couponRepository = couponRepository;
         this.userCouponRepository = userCouponRepository;
+        this.userRepository = userRepository;
     }
 
-    // 1. 领券中心：获取所有可领取的优惠券
+    // 1. 领券中心
     @GetMapping("/market")
     public List<Map<String, Object>> getMarketCoupons(@RequestParam String username) {
         List<Coupon> allCoupons = couponRepository.findByStatus(1);
-
-        // ✅ 修复点：使用 HashMap 替代 Map.of，或者显式指定泛型，彻底解决 "Type mismatch" 问题
         return allCoupons.stream().map(coupon -> {
             boolean hasReceived = userCouponRepository.existsByUsernameAndCouponId(username, coupon.getId());
-
-            // 使用 HashMap 更加稳健（允许空值，且类型明确）
             Map<String, Object> map = new HashMap<>();
             map.put("id", coupon.getId());
             map.put("name", coupon.getName());
             map.put("amount", coupon.getAmount());
             map.put("minSpend", coupon.getMinSpend());
             map.put("validUntil", coupon.getValidUntil());
-            // 计算百分比
             double percent = 0.0;
             if (coupon.getTotalCount() > 0) {
                 percent = (double) coupon.getReceivedCount() / coupon.getTotalCount();
             }
             map.put("percent", percent);
             map.put("hasReceived", hasReceived);
-
             return map;
         }).collect(Collectors.toList());
     }
@@ -59,32 +60,24 @@ public class CouponController {
         return userCouponRepository.findByUsernameOrderByReceiveTimeDesc(username);
     }
 
-    // 3. 领取优惠券 (核心事务逻辑)
+    // 3. 领取优惠券 (领券中心)
     @PostMapping("/{id}/receive")
     @Transactional
     public Map<String, Object> receiveCoupon(@PathVariable Long id, @RequestBody Map<String, String> payload) {
         String username = payload.get("username");
-
-        // 逻辑检查 A: 券是否存在
         Coupon coupon = couponRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("优惠券不存在"));
 
-        // 逻辑检查 B: 库存是否足够
         if (coupon.getReceivedCount() >= coupon.getTotalCount()) {
             throw new RuntimeException("手慢了，优惠券已抢光");
         }
-
-        // 逻辑检查 C: 是否已领取 (限领一张)
         if (userCouponRepository.existsByUsernameAndCouponId(username, id)) {
             throw new RuntimeException("您已经领取过该优惠券了");
         }
 
-        // 执行领取
-        // 1. 扣减库存 (增加领取数)
         coupon.setReceivedCount(coupon.getReceivedCount() + 1);
         couponRepository.save(coupon);
 
-        // 2. 发放用户券
         UserCoupon uc = new UserCoupon();
         uc.setUsername(username);
         uc.setCouponId(coupon.getId());
@@ -95,10 +88,57 @@ public class CouponController {
         uc.setStatus("UNUSED");
         userCouponRepository.save(uc);
 
-        // 同样这里也用 HashMap 避免潜在的类型推断问题
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("message", "领取成功");
+        return result;
+    }
+
+    // ✅ 4. 新增接口：积分兑换优惠券 (持久化到数据库)
+    @PostMapping("/exchange")
+    @Transactional
+    public Map<String, Object> exchangeCoupon(@RequestBody Map<String, Object> payload) {
+        String username = (String) payload.get("username");
+        String name = (String) payload.get("name");
+
+        // 处理数值类型转换，防止 JSON 解析报错
+        double amount = Double.parseDouble(payload.get("amount").toString());
+        int cost = Integer.parseInt(payload.get("cost").toString());
+
+        // 4.1 检查用户
+        User user = userRepository.findByUsername(username);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        // 4.2 检查积分
+        if (user.getPoints() == null)
+            user.setPoints(0);
+        if (user.getPoints() < cost) {
+            throw new RuntimeException("积分不足，无法兑换");
+        }
+
+        // 4.3 扣除积分并保存
+        user.setPoints(user.getPoints() - cost);
+        userRepository.save(user);
+
+        // 4.4 生成用户优惠券
+        UserCoupon uc = new UserCoupon();
+        uc.setUsername(username);
+        uc.setCouponId(-1L); // -1 标识这是积分兑换的券，不是领券中心的
+        uc.setCouponName(name);
+        uc.setAmount(amount);
+        uc.setMinSpend(amount * 10); // 默认门槛 10倍
+        uc.setStatus("UNUSED");
+        uc.setReceiveTime(LocalDateTime.now());
+
+        userCouponRepository.save(uc);
+
+        // 4.5 返回最新积分给前端同步
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("points", user.getPoints());
+        result.put("message", "兑换成功");
         return result;
     }
 }

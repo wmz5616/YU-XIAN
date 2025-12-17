@@ -8,30 +8,24 @@ import Swal from 'sweetalert2'
 const router = useRouter()
 const orders = ref([])
 const showAddressModal = ref(false)
-const showRefundModal = ref(false) // 售后弹窗
+const showRefundModal = ref(false)
 const newAddress = ref({ contact: '', phone: '', detail: '', tag: '家' })
 const refundForm = ref({ orderId: null, productNames: '', amount: 0, reason: '', type: '仅退款' })
 const isLocating = ref(false)
 const activeTab = ref('orders')
 const searchQuery = ref('')
 
-// === 分页状态 ===
 const currentPage = ref(1)
-const pageSize = 5 // 每页显示5条
+const pageSize = 5
 
-// ✅ 实时从 Store 计算优惠券数量
 const couponCount = computed(() => store.myCoupons.length)
 
 onMounted(async () => {
   if (!store.currentUser) { router.push('/login'); return }
   try {
     const username = store.currentUser.username
-
-    // ✅ 核心修复：只拉取订单数据，不拉取用户信息，否则会把积分重置回旧值！
     const [ordersData] = await Promise.all([
       request(`/api/products/orders?username=${username}`),
-      // request(`/api/users/info?username=${username}`), // ❌ 暂时注释掉：防止覆盖本地积分
-      // request(`/api/coupons/my?username=${username}`)  // ❌ 暂时注释掉：改用本地 Store 统计
     ])
 
     if (ordersData) orders.value = ordersData
@@ -39,10 +33,9 @@ onMounted(async () => {
   } catch (error) { console.error(error) }
 })
 
-// === 核心逻辑：搜索 + 分页 ===
 const filteredOrders = computed(() => {
   let result = orders.value
-  // 1. 过滤：排除售后单（售后单去售后Tab看），并匹配搜索词
+
   if (activeTab.value === 'orders') {
     result = result.filter(o => !['售后处理中', '退款成功', '已退货'].includes(o.status))
   }
@@ -62,10 +55,8 @@ const paginatedOrders = computed(() => {
 
 const totalPages = computed(() => Math.ceil(filteredOrders.value.length / pageSize))
 
-// 监听搜索，重置页码
 watch(searchQuery, () => currentPage.value = 1)
 
-// === 售后逻辑 ===
 const afterSalesOrders = computed(() => {
   return orders.value.filter(o => ['售后处理中', '退款成功', '已退货'].includes(o.status))
 })
@@ -172,10 +163,50 @@ const deleteOrder = async (id) => {
     try { await request(`/api/products/order/${id}`, { method: 'DELETE' }); orders.value = orders.value.filter(o => o.id !== id); } catch (e) { }
   }
 }
-const handleAvatarUpload = async (e) => {
-  const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.readAsDataURL(file);
-  reader.onload = async () => { try { const u = await request('/api/users/avatar', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, avatar: reader.result }) }); store.login(u); } catch (e) { } }
+
+// === ✅ 核心修复：更完善的头像上传逻辑 ===
+const handleAvatarUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  // 1. 限制大小 (2MB)
+  if (file.size > 2 * 1024 * 1024) {
+    Swal.fire('文件过大', '请上传 2MB 以内的图片', 'warning')
+    return
+  }
+
+  const reader = new FileReader()
+  reader.readAsDataURL(file)
+
+  reader.onload = async () => {
+    const base64String = reader.result
+    try {
+      // 2. 发送给后端
+      const updatedUser = await request('/api/users/avatar', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: store.currentUser.username,
+          avatar: base64String
+        })
+      })
+
+      // 3. 显式更新 Store 中的头像 (确保 Header 等组件立刻刷新)
+      if (store.currentUser) {
+        store.currentUser.avatar = base64String
+      }
+
+      // 4. 调用 store.login 触发 LocalStorage 持久化
+      // (前提：store.js 中必须已移除对 avatar 长度的限制)
+      store.login(updatedUser)
+
+      Swal.fire('成功', '头像更新成功', 'success')
+    } catch (e) {
+      console.error(e)
+      Swal.fire('上传失败', '图片上传出错，请稍后重试', 'error')
+    }
+  }
 }
+
 const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); showAddressModal.value = false; }
 const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); }
 const locateUser = () => { isLocating.value = true; setTimeout(() => { newAddress.value.detail = "浙江省舟山市普陀区沈家门渔港路88号"; isLocating.value = false; }, 800) }
