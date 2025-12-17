@@ -18,19 +18,23 @@ public class OrderServiceImpl implements OrderService {
 
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
-    private final UserCouponRepository userCouponRepository; // ✅ 新增注入
+    private final UserCouponRepository userCouponRepository;
+    // ✅ 新增注入：售后反馈仓库
+    private final RefundFeedbackRepository refundFeedbackRepository;
 
     public OrderServiceImpl(ProductRepository productRepository,
             OrderRepository orderRepository,
-            UserCouponRepository userCouponRepository) { // ✅ 构造函数注入
+            UserCouponRepository userCouponRepository,
+            // ✅ 构造函数注入 RefundFeedbackRepository
+            RefundFeedbackRepository refundFeedbackRepository) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.userCouponRepository = userCouponRepository;
+        this.refundFeedbackRepository = refundFeedbackRepository; // ✅ 注入赋值
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    // ✅ 修改：方法签名必须包含 Long couponId
     public void createOrder(String username, List<Map<String, Object>> itemPayloads, Address addressSnapshot,
             Long couponId) {
 
@@ -94,7 +98,7 @@ public class OrderServiceImpl implements OrderService {
             total += 20.0;
         }
 
-        // ✅ 5. 核心修改：处理优惠券扣减逻辑
+        // 5. 核心修改：处理优惠券扣减逻辑
         if (couponId != null) {
             // 查券
             UserCoupon userCoupon = userCouponRepository.findById(couponId)
@@ -140,7 +144,9 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public void applyRefund(Long orderId, String reason, String type) {
+    @Transactional
+    // ✅ 修改方法签名：新增 username 参数
+    public void applyRefund(Long orderId, String reason, String type, String username) {
         // 1. 找订单
         OrderRecord order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
@@ -150,11 +156,17 @@ public class OrderServiceImpl implements OrderService {
             throw new RuntimeException("当前订单状态不可申请售后");
         }
 
-        // 3. 更新状态
-        // 这里简单处理，直接改状态。实际项目中可能会存到一张单独的“售后申请表”
+        // 3. 记录用户申请反馈 (新增逻辑)
+        RefundFeedback userFeedback = new RefundFeedback();
+        userFeedback.setOrderId(orderId);
+        userFeedback.setType(0); // 0: 用户申请
+        userFeedback.setContent("申请类型: " + type + " / 原因: " + reason);
+        userFeedback.setOperator(username); // 记录用户操作人
+        refundFeedbackRepository.save(userFeedback);
+
+        // 4. 更新状态
         order.setStatus("售后处理中");
 
-        // 4. (可选) 您可以将 reason 和 type 存入备注字段，或者打印日志
         System.out.println("订单 " + orderId + " 申请售后: " + type + ", 原因: " + reason);
 
         orderRepository.save(order);
@@ -170,8 +182,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional
-    public void auditRefund(Long orderId, boolean pass, String rejectReason) {
+    @Transactional // ✅ 确保事务开启，所有数据库操作要么全成功要么全回滚
+    public void auditRefund(Long orderId, boolean pass, String rejectReason, String adminUsername) {
         OrderRecord order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
@@ -179,24 +191,26 @@ public class OrderServiceImpl implements OrderService {
             throw new RuntimeException("该订单当前不在售后流程中");
         }
 
+        // 1. 准备管理员反馈记录 (持久化反馈内容)
+        RefundFeedback adminFeedback = new RefundFeedback();
+        adminFeedback.setOrderId(orderId);
+        adminFeedback.setType(1);
+        adminFeedback.setOperator(adminUsername);
+
         if (pass) {
-            // === 审核通过 ===
-            order.setStatus("退款成功");
-
-            // 【可选优化】: 这里可以写代码把库存加回去
-            // for (OrderItem item : order.getItems()) {
-            // productRepository.increaseStock(item.getProductId(), item.getQuantity());
-            // }
-
-            System.out.println("订单 " + orderId + " 退款审核通过");
+            order.setStatus("退款成功"); // ✅ 修改状态
+            adminFeedback.setContent("审核通过，已完成退款处理。");
+            // 库存回滚逻辑...
+            for (OrderItem item : order.getItems()) {
+                productRepository.increaseStock(item.getProductId(), item.getQuantity());
+            }
         } else {
-            // === 审核驳回 ===
-            // 状态恢复为 "已送达" 或者专门的 "售后驳回"
-            order.setStatus("已送达");
-            // 如果实体类里有备注字段，可以保存 rejectReason
-            System.out.println("订单 " + orderId + " 退款驳回，原因: " + rejectReason);
+            order.setStatus("已送达"); // ✅ 驳回则恢复状态
+            adminFeedback.setContent("审核驳回，原因：" + rejectReason);
         }
 
-        orderRepository.save(order);
+        // 2. ✅ 核心修复：显式保存反馈记录和订单状态
+        refundFeedbackRepository.save(adminFeedback);
+        orderRepository.save(order); // 👈 必须执行这一行，否则刷新后状态变回原样
     }
 }

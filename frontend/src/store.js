@@ -3,15 +3,15 @@ import { reactive } from "vue";
 // 统一存储 Key
 const CART_KEY = "yuxian_cart";
 const USER_KEY = "yuxian_user";
-const COUPON_KEY = "yuxian_coupons";
+// [删除] const COUPON_KEY = "yuxian_coupons";
 const LOGS_KEY = "yuxian_point_logs";
 
 // 初始化读取
 const savedUser = JSON.parse(localStorage.getItem(USER_KEY) || "null");
 const savedCart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
-const savedCoupons = JSON.parse(localStorage.getItem(COUPON_KEY) || "[]");
+// [删除] const savedCoupons = JSON.parse(localStorage.getItem(COUPON_KEY) || "[]");
 
-// 初始化积分明细：如果没有记录，给两条默认的演示数据
+// 初始化积分明细
 const savedLogs = JSON.parse(
   localStorage.getItem(LOGS_KEY) ||
     JSON.stringify([
@@ -36,8 +36,8 @@ export const store = reactive({
   // --- 核心数据源 ---
   cart: savedCart,
   currentUser: savedUser,
-  myCoupons: savedCoupons,
-  pointLogs: savedLogs,
+  myCoupons: [], // 修复：默认为空数组，完全依赖 API 获取
+  pointLogs: savedLogs, // 修复：继续依赖本地存储作为数据源
 
   notification: { show: false, message: "", type: "success" },
   flySignal: { id: 0, rect: null, img: "" },
@@ -94,7 +94,7 @@ export const store = reactive({
     localStorage.setItem(CART_KEY, JSON.stringify(this.cart));
   },
 
-  // --- 👤 用户 & 积分管理 (新增核心修复) ---
+  // --- 👤 用户 & 积分管理 ---
 
   // 1. 扣除积分并同步保存
   deductPoints(amount) {
@@ -104,7 +104,7 @@ export const store = reactive({
     }
   },
 
-  // 2. 增加积分明细 (保留最近5条)
+  // 2. 增加积分明细 (保留最近20条)
   addPointLog(log) {
     const newLog = {
       id: Date.now(),
@@ -115,37 +115,31 @@ export const store = reactive({
     // 插入到数组最前面
     this.pointLogs.unshift(newLog);
 
-    // ✂️ 核心修复：截取前5条
-    if (this.pointLogs.length > 5) {
-      this.pointLogs = this.pointLogs.slice(0, 5);
+    if (this.pointLogs.length > 20) {
+      this.pointLogs = this.pointLogs.slice(0, 20);
     }
 
     this.savePointLogs();
   },
 
   savePointLogs() {
+    // 修复：积分明细应始终保存，不应在 logout 时清除
     localStorage.setItem(LOGS_KEY, JSON.stringify(this.pointLogs));
   },
 
-  // --- 🎟️ 优惠券逻辑 ---
+  // --- 🎟️ 优惠券逻辑 (修复重复问题) ---
   // 3. 兑换/领取优惠券
   addCoupon(coupon) {
-    const newCoupon = {
-      id: Date.now(), // 生成唯一ID
-      couponName: coupon.name, // 确保字段映射正确
-      amount: coupon.amount,
-      minSpend: coupon.amount * 10, // 默认门槛为面额10倍
-      status: "UNUSED",
-      receiveTime: new Date().toISOString(),
-      type: "EXCHANGE", // 标记为兑换类型
-    };
-    this.myCoupons.unshift(newCoupon);
-    this.saveCoupons();
+    // 修复：兑换优惠券后，不应该再手动加入 myCoupons。
+    // 因为这会导致 CouponView.vue 在渲染时出现重复数据。
+    // 兑换成功后，应该依赖 CouponView 或 ProfileView 重新调用 API 获取最新列表。
+    this.showNotification(
+      `优惠券 ${coupon.name} 兑换成功，请刷新列表查看`,
+      "success"
+    );
   },
 
-  saveCoupons() {
-    localStorage.setItem(COUPON_KEY, JSON.stringify(this.myCoupons));
-  },
+  // [删除] saveCoupons() 方法
 
   // --- 其他辅助 ---
   getProductCount(productId) {
@@ -173,7 +167,6 @@ export const store = reactive({
 
   login(user) {
     this.currentUser = user;
-    // 登录时如果不包含积分字段，初始化为0
     if (this.currentUser.points === undefined) {
       this.currentUser.points = 0;
     }
@@ -192,8 +185,9 @@ export const store = reactive({
     this.pointLogs = [];
     this.clearCart();
     localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(COUPON_KEY);
-    localStorage.removeItem(LOGS_KEY);
+    // [删除] localStorage.removeItem(COUPON_KEY);
+    // ✅ 修复：不删除 LOGS_KEY，保持明细持久化
+    // localStorage.removeItem(LOGS_KEY);
     this.showNotification("您已安全退出", "success");
   },
 

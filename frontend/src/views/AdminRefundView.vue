@@ -6,14 +6,21 @@ import Swal from 'sweetalert2'
 const refunds = ref([])
 const loading = ref(false)
 
+// ✅ 修复 1: 从 localStorage 获取管理员用户名
+const adminUser = JSON.parse(localStorage.getItem('yuxian_user') || '{}');
+const adminUsername = adminUser.username || 'SystemAdmin';
+// ===========================================
+
 const fetchRefunds = async () => {
     loading.value = true
     try {
-        // 调用刚才写的后端接口
+        // 调用后端接口获取待处理的售后申请
         const res = await request.get('/api/orders/admin/refunds')
+
+        // 这里的处理确保了数据的响应式更新
         refunds.value = res || []
     } catch (e) {
-        console.error(e)
+        console.error("加载售后列表失败:", e)
     } finally {
         loading.value = false
     }
@@ -23,47 +30,61 @@ const fetchRefunds = async () => {
 const approve = async (order) => {
     const result = await Swal.fire({
         title: '同意退款?',
-        text: `订单金额 ¥${order.totalPrice} 将原路退回给用户`,
+        html: `<p>订单金额 <span class="text-xl font-bold text-green-600">¥${order.totalPrice}</span> 将原路退回给用户</p>`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#10B981', // Green
+        confirmButtonColor: '#10B981',
         confirmButtonText: '确认同意',
         cancelButtonText: '取消'
     })
 
     if (result.isConfirmed) {
         try {
-            await request.post(`/api/orders/admin/refunds/${order.id}/audit`, { pass: true })
+            // ✅ 修复 2: 修正 API 路径并传递 adminUsername
+            await request.post(`/api/orders/admin/refunds/${order.id}/audit`, {
+                pass: true,
+                reason: '审核通过，已同意退款。',
+                adminUsername: adminUsername
+            });
+
             Swal.fire('已处理', '订单已变更为退款成功', 'success')
-            fetchRefunds() // 刷新列表
+            await fetchRefunds() // ✅ 核心：操作成功后重新拉取数据库最新状态
         } catch (e) {
-            Swal.fire('操作失败', e.message, 'error')
+            Swal.fire('处理失败', e.message || '系统繁忙', 'error')
         }
     }
 }
 
-// 驳回申请
+// 驳回退款
 const reject = async (order) => {
-    const result = await Swal.fire({
-        title: '驳回申请',
-        input: 'text',
-        inputLabel: '请输入驳回理由',
-        inputPlaceholder: '例如：商品已损坏，不符合退货条件...',
+    // 使用 Swal 强制要求输入驳回理由
+    const { value: reason } = await Swal.fire({
+        title: '驳回退款申请',
+        input: 'textarea',
+        inputLabel: `请输入驳回订单 #${20250000 + order.id} 的原因`,
+        inputPlaceholder: '退款不通过的具体原因...',
+        inputValidator: (value) => {
+            if (!value) return '驳回原因不能为空！'
+        },
         showCancelButton: true,
-        confirmButtonColor: '#EF4444', // Red
-        confirmButtonText: '确认驳回'
+        confirmButtonColor: '#EF4444',
+        confirmButtonText: '确认驳回',
+        cancelButtonText: '取消'
     })
 
-    if (result.isConfirmed) {
+    if (reason) {
         try {
+            // ✅ 修复 3: 修正 API 路径并传递驳回理由与操作人
             await request.post(`/api/orders/admin/refunds/${order.id}/audit`, {
                 pass: false,
-                reason: result.value
-            })
-            Swal.fire('已驳回', '订单状态已恢复', 'info')
-            fetchRefunds()
+                reason: reason,
+                adminUsername: adminUsername
+            });
+
+            Swal.fire('已驳回', `订单已恢复为“已送达”，原因：${reason}`, 'success')
+            await fetchRefunds() // ✅ 核心：同步数据库状态
         } catch (e) {
-            Swal.fire('操作失败', e.message, 'error')
+            Swal.fire('处理失败', e.message || '系统繁忙', 'error')
         }
     }
 }
@@ -71,62 +92,85 @@ const reject = async (order) => {
 onMounted(() => {
     fetchRefunds()
 })
+
+const formatDate = (iso) => new Date(iso).toLocaleString()
 </script>
 
 <template>
-    <div class="p-6 bg-[#F8FAFC] min-h-screen">
+    <div class="p-6 bg-slate-50 min-h-screen">
         <div class="max-w-7xl mx-auto">
-            <h1 class="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                🛡️ 售后处理中心
-                <span class="text-sm font-normal bg-orange-100 text-orange-600 px-3 py-1 rounded-full">{{ refunds.length
-                    }} 待处理</span>
-            </h1>
+            <header class="flex justify-between items-center mb-8 border-b border-slate-200 pb-6">
+                <div>
+                    <h1 class="text-3xl font-black text-slate-800 tracking-tight">
+                        售后管理中心
+                    </h1>
+                    <p class="text-slate-500 text-sm mt-1">处理用户的退款与退货申请</p>
+                </div>
+                <div class="bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100">
+                    <span class="text-indigo-600 font-bold text-sm">
+                        待处理任务: {{ refunds.length }} 笔
+                    </span>
+                </div>
+            </header>
 
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50 text-slate-500 text-sm border-b border-slate-100">
-                            <th class="p-4 font-medium">售后单号</th>
-                            <th class="p-4 font-medium">商品信息</th>
-                            <th class="p-4 font-medium">申请人</th>
-                            <th class="p-4 font-medium">退款金额</th>
-                            <th class="p-4 font-medium">申请原因</th>
-                            <th class="p-4 font-medium text-right">操作</th>
+            <div v-if="loading" class="flex flex-col items-center justify-center py-20 text-slate-400">
+                <div class="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4">
+                </div>
+                <p class="font-medium">同步数据中...</p>
+            </div>
+
+            <div v-else
+                class="bg-white rounded-[24px] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-100 animate-fade-in">
+                <table class="min-w-full divide-y divide-slate-100">
+                    <thead class="bg-slate-50/80">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                订单号</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                申请用户</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                商品信息</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                申请金额</th>
+                            <th class="px-6 py-4 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                操作决策</th>
                         </tr>
                     </thead>
-                    <tbody class="text-sm divide-y divide-slate-50">
-                        <tr v-for="order in refunds" :key="order.id" class="hover:bg-slate-50/50 transition">
-                            <td class="p-4 font-mono text-slate-500">#AS{{ 20250000 + order.id }}</td>
-                            <td class="p-4">
-                                <div class="font-bold text-slate-700 truncate max-w-[200px]">{{ order.productNames }}
-                                </div>
-                                <div class="text-xs text-slate-400 mt-1">数量: {{ order.items?.length || 1 }}</div>
+                    <tbody class="divide-y divide-slate-50">
+                        <tr v-for="order in refunds" :key="order.id"
+                            class="hover:bg-indigo-50/30 transition-colors group">
+                            <td class="px-6 py-5 whitespace-nowrap">
+                                <span
+                                    class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg font-mono text-xs font-bold">
+                                    #{{ 20250000 + order.id }}
+                                </span>
                             </td>
-                            <td class="p-4">
-                                <div class="flex items-center gap-2">
-                                    <div
-                                        class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
-                                        {{ order.username.charAt(0).toUpperCase() }}
-                                    </div>
-                                    <span>{{ order.username }}</span>
-                                </div>
-                            </td>
-                            <td class="p-4 font-bold text-orange-600 font-serif-sc">¥{{ order.totalPrice }}</td>
-                            <td class="p-4">
-                                <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">仅退款</span>
-                                <div class="text-xs text-slate-400 mt-1 max-w-[150px] truncate"
-                                    :title="order.refundReason">
-                                    {{ order.refundReason || '用户未填写详细原因' }}
+                            <td class="px-6 py-5">
+                                <div class="flex flex-col">
+                                    <span class="text-sm font-bold text-slate-700">{{ order.username }}</span>
+                                    <span class="text-[10px] text-slate-400 mt-0.5">{{ formatDate(order.createTime)
+                                        }}</span>
                                 </div>
                             </td>
-                            <td class="p-4 text-right">
-                                <div class="flex justify-end gap-2">
+                            <td class="px-6 py-5">
+                                <p class="text-sm text-slate-600 line-clamp-1 font-medium" :title="order.productNames">
+                                    {{ order.productNames }}
+                                </p>
+                            </td>
+                            <td class="px-6 py-5 whitespace-nowrap">
+                                <span class="text-lg font-black text-red-500 font-serif-sc">
+                                    <small class="text-xs font-normal">¥</small>{{ order.totalPrice.toFixed(2) }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-5 text-right">
+                                <div
+                                    class="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button @click="reject(order)"
-                                        class="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition text-xs font-bold">
-                                        驳回
+                                        class="px-4 py-2 border-2 border-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all text-xs font-bold">
+                                        驳回申请
                                     </button>
                                     <button @click="approve(order)"
-                                        class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md shadow-indigo-200 transition text-xs font-bold">
+                                        class="px-4 py-2 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 shadow-lg shadow-slate-200 hover:shadow-indigo-200 transition-all text-xs font-bold">
                                         同意退款
                                     </button>
                                 </div>
@@ -135,11 +179,56 @@ onMounted(() => {
                     </tbody>
                 </table>
 
-                <div v-if="refunds.length === 0" class="p-12 text-center text-slate-400">
-                    <div class="text-4xl mb-2 opacity-50">✨</div>
-                    <p>暂无待处理的售后申请</p>
+                <div v-if="refunds.length === 0" class="py-24 text-center">
+                    <div class="inline-flex items-center justify-center w-20 h-20 bg-slate-50 rounded-full mb-4">
+                        <span class="text-3xl">☕</span>
+                    </div>
+                    <h3 class="text-slate-800 font-bold">暂无售后申请</h3>
+                    <p class="text-slate-400 text-sm mt-1">您可以休息一下，或者检查其他订单状态</p>
                 </div>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* ✅ 补全的样式代码 */
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 隐藏滚动条样式 */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #e2e8f0;
+    border-radius: 10px;
+}
+
+/* 适配中文字体库 */
+.font-serif-sc {
+    font-family: 'Noto Serif SC', serif;
+}
+
+/* 针对多行文本截断的 fallback */
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+</style>

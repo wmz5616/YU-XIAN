@@ -17,4 +17,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Modifying
     @Query("UPDATE Product p SET p.stock = p.stock - :quantity WHERE p.id = :id AND p.stock >= :quantity")
     int decreaseStock(Long id, Integer quantity);
+
+    // ✅ 新增方法：增加库存
+    @Modifying
+    @Query("UPDATE Product p SET p.stock = p.stock + :quantity WHERE p.id = :id")
+    void increaseStock(Long id, Integer quantity);
 }

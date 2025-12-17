@@ -129,16 +129,19 @@ public class AdminController {
         return ResponseEntity.ok(stats);
     }
 
-    // 4. 修改订单状态 (发货)
+    // 4. 修改订单状态 (发货) - 可增加adminUsername参数用于记录
     @PutMapping("/orders/{id}/status")
     public ResponseEntity<?> updateOrderStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         Optional<OrderRecord> orderOpt = orderRepository.findById(id);
         if (orderOpt.isPresent()) {
             OrderRecord order = orderOpt.get();
             String newStatus = body.get("status");
+            // String adminUsername = body.get("adminUsername"); // 预留用于记录操作人
+
             if (newStatus != null) {
                 order.setStatus(newStatus);
                 orderRepository.save(order);
+                // 可以在这里记录操作日志
                 return ResponseEntity.ok(order);
             }
         }

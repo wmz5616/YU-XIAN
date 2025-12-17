@@ -18,14 +18,61 @@ const searchQuery = ref('')
 const currentPage = ref(1)
 const pageSize = 5
 
-const couponCount = computed(() => store.myCoupons.length)
+// ✅ 优化修复：优惠券数量只显示【可用】数量 (约 20 行)
+const couponCount = computed(() => {
+  const now = new Date();
+  return store.myCoupons.filter(c =>
+    c.status === 'UNUSED' &&
+    (
+      !c.expiryDate ||
+      new Date(c.expiryDate) > now
+    )
+  ).length
+})
+// ========================================================
+
+// 动态获取用户地点 (修复 "浙江" 硬编码)
+const userLocation = computed(() => {
+  if (store.currentUser?.addresses?.length > 0) {
+    const addr = store.currentUser.addresses.find(a => a.isDefault) || store.currentUser.addresses[0]
+    // 尝试获取城市或地址前部分
+    const detailParts = addr.detail.split('省')
+    if (detailParts.length > 1) {
+      // 如果包含省份，显示省份
+      return detailParts[0] + '省'
+    }
+    // 否则显示地址前 6 个字符
+    return addr.detail.length > 6 ? addr.detail.substring(0, 6) + '...' : addr.detail
+  }
+  return '未设置地址'
+})
+
+// === 新增：拉取优惠券逻辑 ===
+const fetchCoupons = async () => {
+  try {
+    const username = store.currentUser?.username;
+    if (!username) return;
+
+    const res = await request.get(`/api/coupons/my?username=${username}`);
+    if (res && Array.isArray(res)) {
+      // 关键：将远程数据同步到 store.myCoupons
+      store.myCoupons = res;
+    }
+  } catch (e) {
+    console.error("Failed to fetch coupons:", e);
+    store.myCoupons = [];
+  }
+};
+// ========================================================
 
 onMounted(async () => {
   if (!store.currentUser) { router.push('/login'); return }
   try {
     const username = store.currentUser.username
+    // 关键修复：在拉取订单数据时，并行拉取优惠券数据
     const [ordersData] = await Promise.all([
       request(`/api/products/orders?username=${username}`),
+      fetchCoupons() // 调用拉取优惠券
     ])
 
     if (ordersData) orders.value = ordersData
@@ -34,6 +81,7 @@ onMounted(async () => {
 })
 
 const filteredOrders = computed(() => {
+  // ... (保持不变)
   let result = orders.value
 
   if (activeTab.value === 'orders') {
@@ -73,13 +121,22 @@ const openRefundModal = (order) => {
 }
 
 const submitRefund = async () => {
+  // ... (保持不变)
   if (!refundForm.value.reason) return Swal.fire('请填写申请原因', '', 'warning')
 
+  if (!store.currentUser || !store.currentUser.username) {
+      return Swal.fire('错误', '用户未登录，无法提交申请', 'error')
+  }
+
   try {
-    await request.post(`/api/orders/${refundForm.value.orderId}/refund`, {
+    // ✅ 关键修复：在请求体中添加 username
+    const payload = {
       reason: refundForm.value.reason,
-      type: refundForm.value.type
-    })
+      type: refundForm.value.type,
+      username: store.currentUser.username // <<< 修复点：添加当前操作人
+    };
+
+    await request.post(`/api/orders/${refundForm.value.orderId}/refund`, payload)
 
     const order = orders.value.find(o => o.id === refundForm.value.orderId)
     if (order) order.status = '售后处理中'
@@ -101,6 +158,7 @@ const submitRefund = async () => {
 
 // 确认收货逻辑
 const confirmReceipt = async (order) => {
+  // ... (保持不变)
   const result = await Swal.fire({
     title: '<span class="text-xl font-bold text-slate-800">确认已收到货品？</span>',
     html: `
@@ -159,12 +217,13 @@ const confirmReceipt = async (order) => {
 }
 
 const deleteOrder = async (id) => {
+  // ... (保持不变)
   if ((await Swal.fire({ title: '删除订单?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' })).isConfirmed) {
     try { await request(`/api/products/order/${id}`, { method: 'DELETE' }); orders.value = orders.value.filter(o => o.id !== id); } catch (e) { }
   }
 }
 
-// === ✅ 核心修复：更完善的头像上传逻辑 ===
+// === ✅ 核心修复：更完善的头像上传逻辑 (保持不变) ===
 const handleAvatarUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -296,6 +355,11 @@ const getStatusColor = (s) => {
               <div
                 class="mt-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-mono tracking-wider border border-white/10">
                 SVIP · {{ store.currentUser?.username }}</div>
+
+              <div
+                class="mt-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs tracking-wider border border-white/10 flex items-center gap-1">
+                📍 {{ userLocation }}
+              </div>
 
               <div class="grid grid-cols-3 gap-4 w-full mt-8 border-t border-white/10 pt-6">
                 <div class="text-center">
@@ -458,7 +522,7 @@ const getStatusColor = (s) => {
               <div class="flex gap-4 bg-slate-50 p-3 rounded-xl mb-4">
                 <img :src="order.items?.[0]?.imageUrl" class="w-12 h-12 rounded-lg object-cover">
                 <div>
-                  <div class="text-sm font-bold text-slate-700">{{ order.productNames }}</div>
+                  <div class="text-sm font-bold text-slate-700 line-clamp-1">{{ order.productNames }}</div>
                   <div class="text-xs text-slate-400">退款金额: ¥{{ order.totalPrice }}</div>
                 </div>
               </div>
