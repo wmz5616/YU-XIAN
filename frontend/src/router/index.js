@@ -9,6 +9,7 @@ import CheckoutView from "../views/CheckoutView.vue";
 import PaymentSuccessView from "../views/PaymentSuccessView.vue";
 import NotFoundView from "../views/NotFoundView.vue";
 import PointsView from "../views/PointsView.vue";
+import OrdersView from '../views/OrdersView.vue'
 
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
@@ -100,6 +101,11 @@ const router = createRouter({
       name: "points",
       component: PointsView,
       meta: { title: "会员积分中心" },
+    },
+    {
+      path: '/orders',
+      name: 'orders',
+      component: OrdersView
     },
   ],
 });

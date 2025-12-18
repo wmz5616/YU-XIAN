@@ -3,26 +3,14 @@ import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '../store.js'
 import { request } from '@/utils/request'
-
-// ==========================================
-// 🔴 高德地图配置区域 (请在此处填入 Key)
-// ==========================================
-window._AMapSecurityConfig = {
-  // 请替换为你在高德开放平台申请的 Key
-  securityJsCode: '在此填入你的安全密钥_例如_a1b2c3d4e5f6',
-};
-// 确保在 index.html 中正确引入了高德地图 JS API
-// ==========================================
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const paymentMethod = ref('alipay')
 const selectedAddressId = ref(null)
 const showAddressModal = ref(false)
 
-// ✅ 新增：地址模式切换
-const addressMode = ref('map') // 'map' | 'manual'
-
-// 地址表单 (使用 reactive 以便在不同模式下共享和更新)
+const addressMode = ref('map')
 const newAddress = reactive({
   contact: '',
   phone: '',
@@ -33,29 +21,30 @@ const newAddress = reactive({
 const isLocating = ref(false)
 const loading = ref(false)
 
-// 优惠券相关
 const availableCoupons = ref([]);
 const selectedCouponId = ref(null);
 
 const myAddresses = computed(() => store.currentUser?.addresses || [])
 const cartItems = computed(() => store.cart || [])
 
-// 计算逻辑
 const subTotal = computed(() => cartItems.value.reduce((sum, item) => sum + item.price * item.quantity, 0));
 const freight = computed(() => subTotal.value > 200 ? 0 : 20);
+const selectedAddress = computed(() => {
+  if (!selectedAddressId.value) return null;
+  return myAddresses.value.find(a => a.id === selectedAddressId.value);
+});
+
 const selectedCoupon = computed(() => {
   if (!selectedCouponId.value) return null;
   return availableCoupons.value.find(c => c.id === selectedCouponId.value);
 });
 const finalPrice = computed(() => {
   let discount = selectedCoupon.value ? selectedCoupon.value.amount : 0;
-  // 优惠券不能抵扣运费，且不能超出商品总价
   const actualDiscount = Math.min(discount, subTotal.value);
   let total = subTotal.value - actualDiscount + freight.value;
   return total > 0 ? total.toFixed(2) : '0.00';
 });
 
-// 拉取优惠券 (移除对 store.myCoupons 的合并，仅依赖远程数据)
 const fetchCoupons = async () => {
   try {
     const username = store.currentUser?.username;
@@ -63,16 +52,13 @@ const fetchCoupons = async () => {
 
     let remoteCoupons = [];
     try {
-      // ✅ 依赖服务器获取优惠券，不再合并本地缓存
       const res = await request.get(`/api/coupons/my?username=${username}`);
       if (res && Array.isArray(res)) remoteCoupons = res;
-      // ✅ 修复：将远程获取的优惠券同步到 store 内存，以供 ProfileView 的 couponCount 使用
       store.myCoupons = remoteCoupons;
     } catch (e) { console.error("API Error", e); }
 
     availableCoupons.value = remoteCoupons.filter(c => {
       const isUnused = c.status === 'UNUSED';
-      // 优惠券门槛校验
       const isThresholdMet = (c.minSpend || 0) <= subTotal.value;
       return isUnused && isThresholdMet;
     });
@@ -104,52 +90,70 @@ onMounted(() => {
   fetchCoupons();
 })
 
-// === 定位逻辑 (核心修复) ===
 const locateUser = () => {
   if (typeof AMap === 'undefined') {
-    store.showNotification('地图组件未加载，请检查 Key 或网络', 'error')
-    addressMode.value = 'manual' // 自动降级
+    store.showNotification('地图组件加载中，请稍后重试', 'warning')
     return
   }
 
-  // 修复：每次点击时清空旧地址
+  // 1. 开始 Loading
   newAddress.detail = ''
-
   isLocating.value = true
-  AMap.plugin('AMap.Geolocation', function () {
+
+  AMap.plugin(['AMap.Geolocation', 'AMap.Geocoder'], function () {
+    // A. 先定位 (获取经纬度)
     const geolocation = new AMap.Geolocation({
       enableHighAccuracy: true,
-      timeout: 8000 // 8秒超时
+      timeout: 10000,
+      zoomToAccuracy: true
     })
 
     geolocation.getCurrentPosition(function (status, result) {
-      isLocating.value = false
       if (status === 'complete') {
-        newAddress.detail = result.formattedAddress
-        store.showNotification('定位成功')
+        // ✅ 定位成功，拿到了 result.position (经纬度)
+        console.log('经纬度获取成功:', result.position)
+        
+        // B. 手动执行逆地理编码 (强行转文字)
+        const geocoder = new AMap.Geocoder({
+          radius: 1000,
+          extensions: 'all'
+        })
+
+        geocoder.getAddress(result.position, function(status, data) {
+          isLocating.value = false // 结束 Loading
+          
+          if (status === 'complete' && data.regeocode) {
+            // ✅✅✅ 终于拿到了详细地址！
+            console.log('逆地理编码成功:', data.regeocode.formattedAddress)
+            newAddress.detail = data.regeocode.formattedAddress
+            store.showNotification('定位成功')
+          } else {
+            console.error('逆地理编码失败:', status, data)
+            // 兜底：如果转文字失败，至少填个经纬度证明定位是准的
+            newAddress.detail = `(已定位到经纬度: ${result.position}, 但地址解析超时)`
+            store.showNotification('地址解析失败，请手动补充', 'warning')
+          }
+        })
+
       } else {
-        console.error("定位失败:", result.message || '未知错误')
-        store.showNotification('定位失败，请切换到手动输入', 'warning')
-        // 修复：定位失败，自动切换到手动输入模式
+        isLocating.value = false
+        console.error("定位失败:", result.message)
+        store.showNotification('定位失败，请手动输入', 'error')
         addressMode.value = 'manual'
       }
     })
   })
 }
 
-// === 打开地址弹窗 (新增) ===
 const openAddressModal = () => {
-  // 重置表单
   newAddress.contact = ''
   newAddress.phone = ''
   newAddress.detail = ''
   newAddress.tag = '家'
-  // 默认模式
   addressMode.value = 'map'
   showAddressModal.value = true
 }
 
-// === 保存地址 (修改：使用 newAddress) ===
 const saveAddress = async () => {
   if (!newAddress.contact || !newAddress.detail || !newAddress.phone) {
     store.showNotification('请完整填写联系人、电话和详细地址', 'warning')
@@ -157,7 +161,6 @@ const saveAddress = async () => {
   }
   const isFirst = myAddresses.value.length === 0
 
-  // 将 reactive 对象解构为普通对象以保存
   const addressToSave = { ...newAddress, isDefault: isFirst }
   const updatedAddresses = [...myAddresses.value, addressToSave]
 
@@ -169,7 +172,6 @@ const saveAddress = async () => {
     store.login(updatedUser)
     showAddressModal.value = false
     if (isFirst && store.currentUser.addresses.length > 0) {
-      // 找到新添加的地址并设为选中
       selectedAddressId.value = store.currentUser.addresses.find(a =>
         a.detail === newAddress.detail && a.contact === newAddress.contact
       )?.id || store.currentUser.addresses[0].id
@@ -178,50 +180,70 @@ const saveAddress = async () => {
   } catch (e) { store.showNotification('保存失败', 'error') }
 }
 
-// === 提交订单 ===
 const submitOrder = async () => {
-  if (cartItems.value.length === 0) return store.showNotification('购物车是空的', 'warning')
-  if (!selectedAddressId.value) return store.showNotification('请选择收货地址', 'warning')
+  if (loading.value) return
 
-  const currentAddress = myAddresses.value.find(a => a.id === selectedAddressId.value)
-  if (!currentAddress) return store.showNotification('地址数据异常', 'error')
-
+  if (!selectedAddress.value) {
+    Swal.fire('提示', '请先选择收货地址', 'warning')
+    return
+  }
   loading.value = true
 
-  // 1. 构造符合 OrderController 的 Payload
   const payload = {
-    username: store.currentUser.username,
-    items: cartItems.value.map(item => ({
+    items: store.cart.map(item => ({
       id: item.id,
       quantity: item.quantity
     })),
     address: {
-      name: currentAddress.contact,
-      phone: currentAddress.phone,
-      detail: currentAddress.detail
+      contact: selectedAddress.value.contact,
+      phone: selectedAddress.value.phone,
+      detail: selectedAddress.value.detail
     },
-    couponId: selectedCouponId.value || null
+    couponId: selectedCoupon.value ? selectedCoupon.value.id : null
   }
 
-  const currentFinalPrice = finalPrice.value
-
   try {
-    // 2. 发送请求
-    await request('/api/orders', { method: 'POST', body: JSON.stringify(payload) })
+    const res = await request.post('/api/orders', payload)
+    const orderId = res.orderId 
 
-    // 3. 处理本地优惠券状态 (前端视觉更新)
-    if (selectedCouponId.value) {
-      const localCoupon = store.myCoupons.find(c => c.id === selectedCouponId.value);
-      if (localCoupon) localCoupon.status = 'USED';
+    let timerInterval
+    await Swal.fire({
+      title: '正在连接支付网关...',
+      html: '安全支付环境检测中 <b></b>',
+      timer: 1500,
+      timerProgressBar: true,
+      didOpen: () => {
+        Swal.showLoading()
+        const b = Swal.getHtmlContainer().querySelector('b')
+        timerInterval = setInterval(() => {
+          b.textContent = Swal.getTimerLeft()
+        }, 100)
+      },
+      willClose: () => {
+        clearInterval(timerInterval)
+      }
+    })
+
+    await request.post(`/api/orders/${orderId}/pay`)
+
+    if (typeof store.clearCart === 'function') {
+        store.clearCart() 
+    } else {
+        store.cart = []
     }
+    
+    await Swal.fire({
+      icon: 'success',
+      title: '支付成功！',
+      text: '商家正在加急备货中，请留意发货通知',
+      confirmButtonText: '查看订单'
+    })
+    
+    router.push('/orders')
 
-    store.clearCart()
-    router.push({ path: '/payment-success', query: { amount: currentFinalPrice, method: paymentMethod.value } })
-  } catch (e) {
-    console.error("Order Submit Error:", e);
-    // 提示用户可能的原因
-    store.showNotification(e.message || '下单失败', 'error')
-  } finally {
+  } catch (error) {
+    console.error(error)
+  }finally {
     loading.value = false
   }
 }

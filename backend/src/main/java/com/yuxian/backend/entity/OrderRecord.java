@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.math.BigDecimal;
 
 @Data
 @Entity
@@ -17,21 +18,21 @@ public class OrderRecord {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<OrderItem> items;
 
-    private Double totalPrice;
+    private BigDecimal totalPrice;
     private String status;
     private LocalDateTime createTime;
 
     private String productNames;
 
-    public Double getTotalAmount() {
-        return this.totalPrice; // 假设数据库字段叫 totalPrice
+    public BigDecimal getTotalAmount() {
+        return this.totalPrice;
     }
 
     public void setStatus(String status) {
         this.status = status;
     }
 
-    private String receiverName;   // 收货人姓名
-    private String receiverPhone;  // 收货人电话
-    private String receiverAddress; //
+    private String receiverName;
+    private String receiverPhone;
+    private String receiverAddress;
 }

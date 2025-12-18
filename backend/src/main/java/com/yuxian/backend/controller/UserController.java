@@ -4,6 +4,10 @@ import com.yuxian.backend.entity.Address;
 import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.UserRepository;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.File;
+import java.io.IOException;
+import java.util.UUID;
 import java.util.HashMap;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -16,7 +20,6 @@ import com.yuxian.backend.utils.JwtUtils;
 
 @RestController
 @RequestMapping("/api/users")
-@CrossOrigin
 public class UserController {
 
     private final UserRepository userRepository;
@@ -33,10 +36,10 @@ public class UserController {
     public Map<String, Object> register(@RequestBody User user) {
         Map<String, Object> response = new HashMap<>();
 
-        String regex = "^[a-z0-9]{1,7}$";
+        String regex = "^[a-zA-Z0-9]{4,20}$"; 
         if (!Pattern.matches(regex, user.getUsername())) {
             response.put("success", false);
-            response.put("message", "注册失败：用户名必须是小写字母+数字，且不超过7位");
+            response.put("message", "注册失败：用户名需为4-20位字母或数字");
             return response;
         }
 
@@ -89,18 +92,50 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在，请重新登录");
     }
 
-    @PostMapping("/avatar")
-    public User updateAvatar(@RequestBody Map<String, String> payload) {
-        String username = payload.get("username");
-        String avatarBase64 = payload.get("avatar");
-
-        User user = userRepository.findByUsername(username);
-        if (user != null) {
-            user.setAvatar(avatarBase64);
-            userRepository.save(user);
-            return user;
+    @PostMapping("/upload-avatar")
+    public ResponseEntity<?> uploadAvatar(@RequestParam("username") String username, 
+                                          @RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+             return ResponseEntity.badRequest().body("文件不能为空");
         }
-        return null;
+        
+        try {
+            String projectPath = System.getProperty("user.dir");
+            
+            String staticPath = "/src/main/resources/static/images/avatars/";
+            if (projectPath.endsWith("backend")) {
+                staticPath = "/src/main/resources/static/images/avatars/";
+            } else {
+                staticPath = "/backend/src/main/resources/static/images/avatars/";
+            }
+            
+            String uploadDir = projectPath + staticPath;
+            File dir = new File(uploadDir);
+            if (!dir.exists()) dir.mkdirs();
+
+            String originalFilename = file.getOriginalFilename();
+            String suffix = originalFilename != null && originalFilename.contains(".") 
+                          ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
+                          : ".jpg";
+            String fileName = UUID.randomUUID().toString() + suffix;
+
+            File dest = new File(dir, fileName);
+            file.transferTo(dest);
+            
+            String avatarUrl = "/images/avatars/" + fileName;
+
+            User user = userRepository.findByUsername(username);
+            if (user != null) {
+                user.setAvatar(avatarUrl);
+                userRepository.save(user);
+                return ResponseEntity.ok(user);
+            }
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在");
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("上传失败: " + e.getMessage());
+        }
     }
 
     @GetMapping("/info")

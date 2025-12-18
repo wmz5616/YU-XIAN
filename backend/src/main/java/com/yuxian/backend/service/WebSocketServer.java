@@ -1,27 +1,45 @@
 package com.yuxian.backend.service;
 
+import com.yuxian.backend.entity.User;
+import com.yuxian.backend.repository.UserRepository;
+import com.yuxian.backend.utils.JwtUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import jakarta.websocket.*;
 import jakarta.websocket.server.ServerEndpoint;
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArraySet;
 
-/**
- * WebSocket服务端，用于向前端推送消息
- */
 @ServerEndpoint("/ws/orders")
 @Component
 public class WebSocketServer {
 
-    // 线程安全的Set，存放每个客户端对应的WebSocketServer对象
     private static CopyOnWriteArraySet<WebSocketServer> webSocketSet = new CopyOnWriteArraySet<>();
+    private static JwtUtils jwtUtils;
+    private static UserRepository userRepository;
+
+    @Autowired
+    public void setJwtUtils(JwtUtils jwtUtils) {
+        WebSocketServer.jwtUtils = jwtUtils;
+    }
+
+    @Autowired
+    public void setUserRepository(UserRepository userRepository) {
+        WebSocketServer.userRepository = userRepository;
+    }
+
     private Session session;
+    private boolean isAdmin = false;
 
     @OnOpen
     public void onOpen(Session session) {
         this.session = session;
+        this.isAdmin = checkAdminRole(session);
+
         webSocketSet.add(this);
-        System.out.println("【WebSocket】有新的连接，当前在线人数：" + webSocketSet.size());
+        System.out.println("【WebSocket】有新的连接，是否管理员: " + isAdmin + "，当前在线人数：" + webSocketSet.size());
     }
 
     @OnClose
@@ -40,18 +58,34 @@ public class WebSocketServer {
         error.printStackTrace();
     }
 
-    // 群发消息 (当有新订单时调用此方法)
     public static void sendInfo(String message) {
         for (WebSocketServer item : webSocketSet) {
             try {
-                item.sendMessage(message);
+                if (item.isAdmin) {
+                    item.session.getBasicRemote().sendText(message);
+                }
             } catch (IOException e) {
                 continue;
             }
         }
     }
 
-    public void sendMessage(String message) throws IOException {
-        this.session.getBasicRemote().sendText(message);
+    private boolean checkAdminRole(Session session) {
+        try {
+            String queryString = session.getQueryString();
+            if (queryString != null && queryString.contains("token=")) {
+                String token = queryString.split("token=")[1].split("&")[0];
+
+                String username = jwtUtils.validateToken(token);
+                if (username != null) {
+                    User user = userRepository.findByUsername(username);
+                    if (user != null && "ADMIN".equals(user.getRole())) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+        }
+        return false;
     }
 }

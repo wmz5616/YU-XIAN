@@ -17,8 +17,6 @@ const searchQuery = ref('')
 
 const currentPage = ref(1)
 const pageSize = 5
-
-// ✅ 优化修复：优惠券数量只显示【可用】数量 (约 20 行)
 const couponCount = computed(() => {
   const now = new Date();
   return store.myCoupons.filter(c =>
@@ -29,20 +27,21 @@ const couponCount = computed(() => {
     )
   ).length
 })
-// ========================================================
 
-// 动态获取用户地点 (修复 "浙江" 硬编码)
 const userLocation = computed(() => {
+
   if (store.currentUser?.addresses?.length > 0) {
     const addr = store.currentUser.addresses.find(a => a.isDefault) || store.currentUser.addresses[0]
-    // 尝试获取城市或地址前部分
-    const detailParts = addr.detail.split('省')
-    if (detailParts.length > 1) {
-      // 如果包含省份，显示省份
-      return detailParts[0] + '省'
+
+    if (addr.detail) {
+      const cityMatch = addr.detail.match(/省(.*?市)/)
+      if (cityMatch && cityMatch[1]) return cityMatch[1]
+      
+      const directCity = addr.detail.match(/(.*?市)/)
+      if (directCity && directCity[1]) return directCity[1]
+
+      return addr.detail.substring(0, 4)
     }
-    // 否则显示地址前 6 个字符
-    return addr.detail.length > 6 ? addr.detail.substring(0, 6) + '...' : addr.detail
   }
   return '未设置地址'
 })
@@ -125,7 +124,7 @@ const submitRefund = async () => {
   if (!refundForm.value.reason) return Swal.fire('请填写申请原因', '', 'warning')
 
   if (!store.currentUser || !store.currentUser.username) {
-      return Swal.fire('错误', '用户未登录，无法提交申请', 'error')
+    return Swal.fire('错误', '用户未登录，无法提交申请', 'error')
   }
 
   try {
@@ -217,18 +216,15 @@ const confirmReceipt = async (order) => {
 }
 
 const deleteOrder = async (id) => {
-  // ... (保持不变)
   if ((await Swal.fire({ title: '删除订单?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' })).isConfirmed) {
     try { await request(`/api/products/order/${id}`, { method: 'DELETE' }); orders.value = orders.value.filter(o => o.id !== id); } catch (e) { }
   }
 }
 
-// === ✅ 核心修复：更完善的头像上传逻辑 (保持不变) ===
 const handleAvatarUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
 
-  // 1. 限制大小 (2MB)
   if (file.size > 2 * 1024 * 1024) {
     Swal.fire('文件过大', '请上传 2MB 以内的图片', 'warning')
     return
@@ -240,25 +236,31 @@ const handleAvatarUpload = async (event) => {
   reader.onload = async () => {
     const base64String = reader.result
     try {
-      // 2. 发送给后端
-      const updatedUser = await request('/api/users/avatar', {
-        method: 'POST',
-        body: JSON.stringify({
-          username: store.currentUser.username,
-          avatar: base64String
-        })
-      })
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('username', store.currentUser.username);
 
-      // 3. 显式更新 Store 中的头像 (确保 Header 等组件立刻刷新)
-      if (store.currentUser) {
-        store.currentUser.avatar = base64String
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8080/api/users/upload-avatar', {
+        method: 'POST',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('上传失败');
       }
 
-      // 4. 调用 store.login 触发 LocalStorage 持久化
-      // (前提：store.js 中必须已移除对 avatar 长度的限制)
+      const updatedUser = await response.json();
+      if (store.currentUser) {
+        store.currentUser.avatar = updatedUser.avatar
+      }
       store.login(updatedUser)
 
       Swal.fire('成功', '头像更新成功', 'success')
+
     } catch (e) {
       console.error(e)
       Swal.fire('上传失败', '图片上传出错，请稍后重试', 'error')
@@ -268,7 +270,75 @@ const handleAvatarUpload = async (event) => {
 
 const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); showAddressModal.value = false; }
 const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); }
-const locateUser = () => { isLocating.value = true; setTimeout(() => { newAddress.value.detail = "浙江省舟山市普陀区沈家门渔港路88号"; isLocating.value = false; }, 800) }
+
+const locateUser = () => {
+  // 1. 检查地图组件
+  if (typeof AMap === 'undefined') {
+    Swal.fire('错误', '地图组件未加载，请刷新页面重试', 'error')
+    return
+  }
+
+  // 2. 状态重置
+  isLocating.value = true
+  if (newAddress.value) newAddress.value.detail = '' // 清空旧地址
+
+  // 3. 同时加载 Geolocation (定位) 和 Geocoder (逆地理编码)
+  AMap.plugin(['AMap.Geolocation', 'AMap.Geocoder'], function () {
+    
+    // A. 创建定位对象
+    const geolocation = new AMap.Geolocation({
+      enableHighAccuracy: true,
+      timeout: 10000,
+      zoomToAccuracy: true
+    })
+
+    // B. 开始定位
+    geolocation.getCurrentPosition(function (status, result) {
+      if (status === 'complete') {
+        console.log('Profile定位成功(经纬度):', result.position)
+
+        // C. 定位成功后，手动调用逆地理编码
+        const geocoder = new AMap.Geocoder({
+          radius: 1000,
+          extensions: 'all'
+        })
+
+        geocoder.getAddress(result.position, function(status, data) {
+          isLocating.value = false // 结束 Loading
+
+          if (status === 'complete' && data.regeocode) {
+            // ✅✅✅ 成功拿到地址文字！
+            const addr = data.regeocode.formattedAddress
+            console.log('逆地理编码结果:', addr)
+            
+            newAddress.value.detail = addr // 赋值
+            
+            Swal.fire({ 
+              toast: true, 
+              position: 'top', 
+              icon: 'success', 
+              title: '定位成功', 
+              text: addr,
+              timer: 3000, 
+              showConfirmButton: false 
+            })
+          } else {
+            console.error('逆地理编码失败:', data)
+            newAddress.value.detail = `(已定位到经纬度: ${result.position}, 但地址解析超时)`
+            Swal.fire('提示', '获取经纬度成功，但无法转为文字地址，请手动补充', 'warning')
+          }
+        })
+
+      } else {
+        // 定位失败
+        isLocating.value = false
+        console.error("定位失败:", result.message)
+        Swal.fire('定位失败', '请检查网络或GPS设置', 'error')
+      }
+    })
+  })
+}
+
 const formatDate = (iso) => new Date(iso).toLocaleDateString()
 
 // UI 辅助

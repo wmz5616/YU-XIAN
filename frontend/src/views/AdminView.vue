@@ -8,21 +8,18 @@ import Swal from 'sweetalert2';
 const router = useRouter();
 const route = useRoute();
 
-// === 全局状态 ===
 const currentTab = ref('dashboard');
 const currentUser = ref(JSON.parse(localStorage.getItem('yuxian_user') || '{}'));
 const loading = ref(false);
 const isSidebarOpen = ref(false);
 const isDark = ref(localStorage.getItem('theme') === 'dark');
 
-// === 模拟售后数据 ===
 const refundList = ref([
     { id: 'RF2025001', orderId: '20250018', user: 'wmz183', amount: 502.04, reason: '商品破损/腐坏', status: 'PENDING', date: '2025-12-15' },
     { id: 'RF2025002', orderId: '20250016', user: 'zhangsan', amount: 190.10, reason: '拍错/多拍', status: 'APPROVED', date: '2025-12-14' },
     { id: 'RF2025003', orderId: '20250011', user: 'lisi_99', amount: 88.50, reason: '物流停滞', status: 'REJECTED', date: '2025-12-12' },
 ]);
 
-// === 仪表盘 & 订单状态 ===
 const stats = ref({
     totalSales: 0, totalOrders: 0, totalUsers: 0, pendingOrders: 0, totalProducts: 0,
     chartData: { dates: [], values: [] }
@@ -41,7 +38,6 @@ const statusTabs = [
 const showDetailModal = ref(false);
 const currentOrderDetails = ref({});
 
-// === 商品 & 用户状态 ===
 const products = ref([]);
 const showProductModal = ref(false);
 const editingProduct = ref({});
@@ -54,7 +50,6 @@ const Toast = Swal.mixin({
     didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
 });
 
-// 计算面包屑标题
 const currentPageTitle = computed(() => {
     const map = {
         'dashboard': '运营概况',
@@ -65,25 +60,39 @@ const currentPageTitle = computed(() => {
     return map[currentTab.value] || '控制台'
 })
 
-// 监听路由变化自动关闭侧边栏
 watch(() => route.path, () => { isSidebarOpen.value = false; });
 
-// 📡 WebSocket 逻辑
 let socket = null;
 const initWebSocket = () => {
     if (typeof (WebSocket) === "undefined") return;
+
+    const token = localStorage.getItem('token') || '';
+
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${protocol}localhost:8080/ws/orders`;
+    
+    const wsUrl = `${protocol}localhost:8080/ws/orders?token=${token}`;
+    
     socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+        console.log("WebSocket已连接 (身份鉴权中...)");
+    };
+
     socket.onmessage = (msg) => {
         if (msg.data === 'NEW_ORDER') {
             Toast.fire({ icon: 'info', title: '🔔 收到新订单！', text: '列表已自动刷新' });
-            if (currentTab.value === 'dashboard') { fetchStats(); fetchOrders(false); }
+            if (currentTab.value === 'dashboard' || currentTab.value === 'orders') { 
+                fetchStats(); 
+                fetchOrders(false); 
+            }
         }
+    };
+    
+    socket.onerror = () => {
+        console.log("WebSocket连接失败 (可能是Token失效或网络问题)");
     };
 };
 
-// 🎨 暗黑模式切换
 const toggleDark = () => {
     isDark.value = !isDark.value;
     updateTheme();
@@ -104,7 +113,6 @@ const updateTheme = () => {
     }
 };
 
-// 📊 图表初始化
 const initChart = () => {
     if (!chartRef.value) return;
     if (myChart) myChart.dispose();
@@ -141,7 +149,6 @@ const fetchStats = async () => {
     } catch (err) { console.error(err); }
 };
 
-// 📦 订单管理逻辑
 const fetchOrders = async (showLoading = true) => {
     if (showLoading) { loading.value = true; displayedOrders.value = []; }
     try {
@@ -189,7 +196,6 @@ const getStatusClass = (s) => {
     return base + "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300";
 };
 
-// 🛍️ 商品管理
 const fetchProducts = async () => {
     loading.value = true; products.value = [];
     try { await new Promise(r => setTimeout(r, 300)); const res = await request.get('/api/products'); products.value = res || []; }
@@ -205,7 +211,6 @@ const saveProduct = async () => {
 };
 const handleDeleteProduct = async (id) => { if ((await Swal.fire({ title: '删除?', icon: 'warning', showCancelButton: true })).isConfirmed) { await request.delete(`/api/products/${id}`); fetchProducts(); Toast.fire('已删除', '', 'success'); } };
 
-// 👥 用户管理
 const fetchUsers = async () => {
     loading.value = true; users.value = [];
     try { await new Promise(r => setTimeout(r, 300)); users.value = await request.get('/api/admin/users') || []; }
@@ -215,7 +220,6 @@ const openPointModal = (u) => { editingUser.value = { ...u }; showPointModal.val
 const saveUserPoints = async () => { await request.put(`/api/admin/users/${editingUser.value.id}/points`, { points: parseInt(editingUser.value.points) }); showPointModal.value = false; fetchUsers(); Toast.fire('修改成功', '', 'success'); };
 const handleDeleteUser = async (id) => { if ((await Swal.fire({ title: '删除用户?', icon: 'error', showCancelButton: true })).isConfirmed) { await request.delete(`/api/admin/users/${id}`); fetchUsers(); } };
 
-// 🛡️ 售后处理 (新功能)
 const handleRefundAction = (id, action) => {
     Swal.fire({
         title: action === 'approve' ? '同意退款?' : '拒绝申请?',
@@ -233,7 +237,6 @@ const handleRefundAction = (id, action) => {
     })
 }
 
-// 切换 Tab
 const switchTab = (tab) => {
     currentTab.value = tab;
     if (window.innerWidth < 1024) isSidebarOpen.value = false;

@@ -3,6 +3,7 @@ package com.yuxian.backend.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.math.BigDecimal;
 
 @Data
 @Entity
@@ -14,11 +15,11 @@ public class OrderItem {
     private Long productId;
     private String productName;
     private String imageUrl;
-    private Double price;
+    private BigDecimal price;
     private Integer quantity;
 
     @ManyToOne
     @JoinColumn(name = "order_id")
-    @JsonIgnore // 防止死循环序列化
+    @JsonIgnore
     private OrderRecord order;
 }

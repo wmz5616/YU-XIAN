@@ -2,6 +2,7 @@ package com.yuxian.backend.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonProperty; 
 import java.util.List;
 
 @Data
@@ -17,7 +18,10 @@ public class User {
     private String username;
 
     @Column(nullable = false)
+
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
+    
     private String displayName;
 
     @Lob

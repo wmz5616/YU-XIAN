@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -26,7 +27,7 @@ public class DataInit implements CommandLineRunner {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final CouponRepository couponRepository; // 必须注入
+    private final CouponRepository couponRepository;
 
     public DataInit(ProductRepository productRepository,
             UserRepository userRepository,
@@ -38,7 +39,6 @@ public class DataInit implements CommandLineRunner {
         this.couponRepository = couponRepository;
     }
 
-    // === 2025年 生鲜市场参考价格区间 (单位: 元/kg) ===
     private static final Map<String, double[]> PRICE_RANGES = new HashMap<>();
     static {
         PRICE_RANGES.put("带鱼", new double[] { 35.0, 58.0 });
@@ -86,36 +86,37 @@ public class DataInit implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // 1. 初始化商品
         if (productRepository.count() == 0) {
             System.out.println(">>> 正在初始化商品数据...");
             ClassPathResource resource = new ClassPathResource("data.txt");
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!line.trim().isEmpty())
-                        createProduct(line);
+            if (resource.exists()) {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (!line.trim().isEmpty())
+                            createProduct(line);
+                    }
+                } catch (Exception e) {
+                    System.err.println("!!! 读取 data.txt 失败: " + e.getMessage());
                 }
-            } catch (Exception e) {
-                System.err.println("!!! 读取 data.txt 失败: " + e.getMessage());
             }
         }
 
-        // 2. 初始化管理员
         if (userRepository.findByUsername("admin") == null) {
             User admin = new User();
             admin.setUsername("admin");
-            admin.setPassword(passwordEncoder.encode("123456"));
+
+            String initPassword = "123";
+            admin.setPassword(passwordEncoder.encode(initPassword));
+
             admin.setDisplayName("超级管理员");
             admin.setRole("ADMIN");
             admin.setPoints(9999);
             admin.setAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=admin");
             userRepository.save(admin);
-            System.out.println(">>> 管理员初始化完成");
         }
 
-        // 3. 初始化优惠券 (这里调用了 createCoupon)
         if (couponRepository.count() == 0) {
             createCoupon("新人见面礼", 15.0, 0.0, 100);
             createCoupon("满100减20", 20.0, 100.0, 50);
@@ -124,12 +125,11 @@ public class DataInit implements CommandLineRunner {
         }
     }
 
-    // 辅助方法：创建优惠券
     private void createCoupon(String name, Double amount, Double min, Integer total) {
         Coupon c = new Coupon();
         c.setName(name);
-        c.setAmount(amount);
-        c.setMinSpend(min);
+        c.setAmount(BigDecimal.valueOf(amount));
+        c.setMinSpend(BigDecimal.valueOf(min));
         c.setTotalCount(total);
         c.setReceivedCount(0);
         c.setValidUntil(LocalDate.now().plusDays(30));
@@ -148,23 +148,25 @@ public class DataInit implements CommandLineRunner {
                 p.setName(name);
                 p.setOrigin(parts[2]);
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy.MM.dd");
-                p.setListDate(LocalDate.parse(parts[3], formatter));
+                try {
+                    p.setListDate(LocalDate.parse(parts[3], formatter));
+                } catch (Exception e) {
+                    p.setListDate(LocalDate.now());
+                }
                 p.setDescription(generateDescription(name, parts[2], parts[4]));
 
                 String key = name.split("\\(")[0];
-                double[] range = PRICE_RANGES.getOrDefault(key, PRICE_RANGES.get("DEFAULT"));
-                // 如果没匹配到精确key，尝试模糊匹配
-                if (range == PRICE_RANGES.get("DEFAULT")) {
-                    for (String k : PRICE_RANGES.keySet()) {
-                        if (key.contains(k)) {
-                            range = PRICE_RANGES.get(k);
-                            break;
-                        }
-                    }
-                }
+                double[] range = PRICE_RANGES.entrySet().stream()
+                    .filter(entry -> key.contains(entry.getKey()))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElse(PRICE_RANGES.getOrDefault("DEFAULT", new double[]{30.0, 60.0}));
 
-                double price = range[0] + Math.random() * (range[1] - range[0]);
-                p.setPrice((double) Math.round(price * 100) / 100);
+                double randomPrice = range[0] + Math.random() * (range[1] - range[0]);
+                double roundedPrice = Math.round(randomPrice * 100.0) / 100.0;
+
+                p.setPrice(BigDecimal.valueOf(roundedPrice));
+                
                 p.setStock((int) (Math.random() * 190) + 10);
 
                 String imgPath = getImageMapping(name);
@@ -174,7 +176,7 @@ public class DataInit implements CommandLineRunner {
                 productRepository.save(p);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("跳过错误数据行: " + line);
         }
     }
 

@@ -9,6 +9,7 @@ import com.yuxian.backend.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -21,9 +22,8 @@ public class CouponController {
 
     private final CouponRepository couponRepository;
     private final UserCouponRepository userCouponRepository;
-    private final UserRepository userRepository; // ✅ 新增：需要操作用户积分
+    private final UserRepository userRepository;
 
-    // ✅ 构造函数注入 UserRepository
     public CouponController(CouponRepository couponRepository,
             UserCouponRepository userCouponRepository,
             UserRepository userRepository) {
@@ -32,7 +32,6 @@ public class CouponController {
         this.userRepository = userRepository;
     }
 
-    // 1. 领券中心
     @GetMapping("/market")
     public List<Map<String, Object>> getMarketCoupons(@RequestParam String username) {
         List<Coupon> allCoupons = couponRepository.findByStatus(1);
@@ -54,13 +53,11 @@ public class CouponController {
         }).collect(Collectors.toList());
     }
 
-    // 2. 我的优惠券
     @GetMapping("/my")
     public List<UserCoupon> getMyCoupons(@RequestParam String username) {
         return userCouponRepository.findByUsernameOrderByReceiveTimeDesc(username);
     }
 
-    // 3. 领取优惠券 (领券中心)
     @PostMapping("/{id}/receive")
     @Transactional
     public Map<String, Object> receiveCoupon(@PathVariable Long id, @RequestBody Map<String, String> payload) {
@@ -94,47 +91,43 @@ public class CouponController {
         return result;
     }
 
-    // ✅ 4. 新增接口：积分兑换优惠券 (持久化到数据库)
     @PostMapping("/exchange")
     @Transactional
     public Map<String, Object> exchangeCoupon(@RequestBody Map<String, Object> payload) {
         String username = (String) payload.get("username");
         String name = (String) payload.get("name");
 
-        // 处理数值类型转换，防止 JSON 解析报错
-        double amount = Double.parseDouble(payload.get("amount").toString());
+        double amountDouble = Double.parseDouble(payload.get("amount").toString());
         int cost = Integer.parseInt(payload.get("cost").toString());
 
-        // 4.1 检查用户
         User user = userRepository.findByUsername(username);
         if (user == null) {
             throw new RuntimeException("用户不存在");
         }
 
-        // 4.2 检查积分
         if (user.getPoints() == null)
             user.setPoints(0);
         if (user.getPoints() < cost) {
             throw new RuntimeException("积分不足，无法兑换");
         }
 
-        // 4.3 扣除积分并保存
         user.setPoints(user.getPoints() - cost);
         userRepository.save(user);
 
-        // 4.4 生成用户优惠券
         UserCoupon uc = new UserCoupon();
         uc.setUsername(username);
-        uc.setCouponId(-1L); // -1 标识这是积分兑换的券，不是领券中心的
+        uc.setCouponId(-1L);
         uc.setCouponName(name);
-        uc.setAmount(amount);
-        uc.setMinSpend(amount * 10); // 默认门槛 10倍
+        
+        BigDecimal amountDecimal = BigDecimal.valueOf(amountDouble);
+        uc.setAmount(amountDecimal);
+        uc.setMinSpend(amountDecimal.multiply(BigDecimal.TEN));
+        
         uc.setStatus("UNUSED");
         uc.setReceiveTime(LocalDateTime.now());
 
         userCouponRepository.save(uc);
 
-        // 4.5 返回最新积分给前端同步
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("points", user.getPoints());
