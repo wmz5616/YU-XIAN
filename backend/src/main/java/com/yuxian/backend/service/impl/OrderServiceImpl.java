@@ -155,42 +155,40 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void applyRefund(Long orderId, String reason, String type, String username) {
+
         OrderRecord order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!order.getUsername().equals(username)) {
+            throw new RuntimeException("无权操作此订单");
+        }
 
         if (!"已送达".equals(order.getStatus()) && !"DELIVERED".equals(order.getStatus())) {
             throw new RuntimeException("当前订单状态不可申请售后");
         }
 
-        LocalDateTime deadline = order.getCreateTime().plusDays(10);
-        if (LocalDateTime.now().isAfter(deadline)) {
-            throw new RuntimeException("已超过售后申请期限 (仅限下单后10天内)");
-        }
-
-        RefundFeedback userFeedback = new RefundFeedback();
-        userFeedback.setOrderId(orderId);
-        userFeedback.setType(0);
-        userFeedback.setContent("申请类型: " + type + " / 原因: " + reason);
-        userFeedback.setOperator(username);
-        refundFeedbackRepository.save(userFeedback);
-
         order.setStatus("售后处理中");
         orderRepository.save(order);
+
+        RefundFeedback feedback = new RefundFeedback();
+        feedback.setOrderId(orderId);
+        feedback.setType("仅退款".equals(type) ? 1 : 2);
+        feedback.setContent("用户申请售后：" + reason);
+        feedback.setOperator(username);
+        refundFeedbackRepository.save(feedback);
     }
 
     @Override
     public List<OrderRecord> getPendingRefundOrders() {
-        return orderRepository.findAll().stream()
-                .filter(o -> "售后处理中".equals(o.getStatus()))
-                .sorted((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()))
-                .collect(Collectors.toList());
+        return orderRepository.findByStatusOrderByCreateTimeDesc("售后处理中");
     }
 
     @Override
-    @Transactional
-    public void auditRefund(Long orderId, boolean pass, String rejectReason, String adminUsername) {
+    @Transactional(rollbackFor = Exception.class)
+    public void auditRefund(Long orderId, boolean pass, String reason, String adminUsername) {
+
         OrderRecord order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
@@ -205,13 +203,10 @@ public class OrderServiceImpl implements OrderService {
 
         if (pass) {
             order.setStatus("退款成功");
-            adminFeedback.setContent("审核通过，已完成退款处理。");
-            for (OrderItem item : order.getItems()) {
-                productRepository.increaseStock(item.getProductId(), item.getQuantity());
-            }
+            adminFeedback.setContent("审核通过");
         } else {
             order.setStatus("已送达");
-            adminFeedback.setContent("审核驳回，原因：" + rejectReason);
+            adminFeedback.setContent("审核驳回，原因：" + (reason != null ? reason : "无"));
         }
 
         refundFeedbackRepository.save(adminFeedback);

@@ -5,6 +5,7 @@ import com.yuxian.backend.service.OrderService;
 import com.yuxian.backend.entity.OrderRecord;
 import com.yuxian.backend.repository.OrderRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -65,27 +66,30 @@ public class OrderController {
         return ResponseEntity.ok("售后申请已提交，等待审核");
     }
 
-    @GetMapping("/refunds/pending")
+    @GetMapping("/admin/refunds")
+   @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getPendingRefunds() {
         return ResponseEntity.ok(orderService.getPendingRefundOrders());
     }
 
-    @PostMapping("/{id}/audit")
+    @PostMapping("/admin/refunds/{id}/audit")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> auditRefund(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
         String adminUsername = SecurityContextHolder.getContext().getAuthentication().getName();
-        boolean pass = (boolean) payload.get("pass");
-        String rejectReason = (String) payload.get("rejectReason");
 
-        orderService.auditRefund(id, pass, rejectReason, adminUsername);
+        Boolean passObj = (Boolean) payload.get("pass");
+        boolean pass = passObj != null && passObj;
+
+        String reason = (String) payload.get("reason");
+
+        orderService.auditRefund(id, pass, reason, adminUsername);
         return ResponseEntity.ok("审核处理完成");
     }
 
     @PostMapping("/{id}/pay")
     public ResponseEntity<String> payOrder(@PathVariable Long id) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-
         orderService.payOrder(id, username);
-
         return ResponseEntity.ok("支付成功");
     }
 }

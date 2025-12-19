@@ -14,11 +14,7 @@ const loading = ref(false);
 const isSidebarOpen = ref(false);
 const isDark = ref(localStorage.getItem('theme') === 'dark');
 
-const refundList = ref([
-    { id: 'RF2025001', orderId: '20250018', user: 'wmz183', amount: 502.04, reason: '商品破损/腐坏', status: 'PENDING', date: '2025-12-15' },
-    { id: 'RF2025002', orderId: '20250016', user: 'zhangsan', amount: 190.10, reason: '拍错/多拍', status: 'APPROVED', date: '2025-12-14' },
-    { id: 'RF2025003', orderId: '20250011', user: 'lisi_99', amount: 88.50, reason: '物流停滞', status: 'REJECTED', date: '2025-12-12' },
-]);
+const refundList = ref([]);
 
 const stats = ref({
     totalSales: 0, totalOrders: 0, totalUsers: 0, pendingOrders: 0, totalProducts: 0,
@@ -220,21 +216,57 @@ const openPointModal = (u) => { editingUser.value = { ...u }; showPointModal.val
 const saveUserPoints = async () => { await request.put(`/api/admin/users/${editingUser.value.id}/points`, { points: parseInt(editingUser.value.points) }); showPointModal.value = false; fetchUsers(); Toast.fire('修改成功', '', 'success'); };
 const handleDeleteUser = async (id) => { if ((await Swal.fire({ title: '删除用户?', icon: 'error', showCancelButton: true })).isConfirmed) { await request.delete(`/api/admin/users/${id}`); fetchUsers(); } };
 
-const handleRefundAction = (id, action) => {
-    Swal.fire({
-        title: action === 'approve' ? '同意退款?' : '拒绝申请?',
-        text: action === 'approve' ? '系统将发起退款流程' : '请确认拒绝理由充分',
-        icon: action === 'approve' ? 'question' : 'warning',
-        showCancelButton: true,
-        confirmButtonColor: action === 'approve' ? '#10b981' : '#ef4444',
-        confirmButtonText: '确认'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const item = refundList.value.find(r => r.id === id);
-            if (item) item.status = action === 'approve' ? 'APPROVED' : 'REJECTED';
-            Toast.fire(action === 'approve' ? '已同意退款' : '已拒绝', '', 'success');
-        }
-    })
+const fetchRefunds = async () => {
+    loading.value = true;
+    try {
+        const res = await request.get('/api/orders/admin/refunds');
+        refundList.value = res || [];
+    } catch (e) {
+        console.error("加载售后失败", e);
+        Toast.fire('加载失败', '无法获取售后列表', 'error');
+    } finally {
+        loading.value = false;
+    }
+};
+
+const handleRefundAction = async (orderId, action) => {
+    const isApprove = action === 'approve';
+
+    let rejectReason = '';
+    if (!isApprove) {
+        const { value: text } = await Swal.fire({
+            title: '请输入拒绝理由',
+            input: 'textarea',
+            inputLabel: '理由',
+            inputPlaceholder: '请输入...',
+            showCancelButton: true
+        });
+        if (!text) return;
+        rejectReason = text;
+    } else {
+        const confirm = await Swal.fire({
+            title: '确认同意退款?',
+            text: '订单金额将原路退回',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            confirmButtonText: '确认同意'
+        });
+        if (!confirm.isConfirmed) return;
+    }
+
+    try {
+        await request.post(`/api/orders/admin/refunds/${orderId}/audit`, {
+            pass: isApprove,
+            reason: isApprove ? '审核通过' : rejectReason,
+            adminUsername: currentUser.value.username
+        });
+        
+        Toast.fire(isApprove ? '已同意退款' : '已拒绝申请', '', 'success');
+        fetchRefunds();
+    } catch (e) {
+        Swal.fire('操作失败', e.message || '系统繁忙', 'error');
+    }
 }
 
 const switchTab = (tab) => {
@@ -243,6 +275,7 @@ const switchTab = (tab) => {
     if (tab === 'dashboard') { fetchStats(); fetchOrders(); }
     else if (tab === 'products') fetchProducts();
     else if (tab === 'users') fetchUsers();
+    else if (tab === 'refund') fetchRefunds();
 };
 
 onMounted(() => {

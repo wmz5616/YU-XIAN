@@ -20,4 +20,6 @@ public interface OrderRepository extends JpaRepository<OrderRecord, Long> {
     BigDecimal sumTotalSales();
 
     List<OrderRecord> findByCreateTimeAfter(LocalDateTime time);
+
+    List<OrderRecord> findByStatusOrderByCreateTimeDesc(String status);
 }
