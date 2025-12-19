@@ -14,29 +14,36 @@ const loading = ref(false);
 const isSidebarOpen = ref(false);
 const isDark = ref(localStorage.getItem('theme') === 'dark');
 
+// 售后列表数据
 const refundList = ref([]);
 
+// 统计数据
 const stats = ref({
     totalSales: 0, totalOrders: 0, totalUsers: 0, pendingOrders: 0, totalProducts: 0,
     chartData: { dates: [], values: [] }
 });
-const allOrders = ref([]);
-const displayedOrders = ref([]);
+
+// 订单数据
+const allOrders = ref([]); // 原始数据
+const displayedOrders = ref([]); // 前端展示数据（经过筛选）
 const chartRef = ref(null);
 let myChart = null;
 
+// 订单查询参数
 const orderQuery = ref({ page: 1, size: 10, keyword: '', status: 'ALL', total: 0 });
 const statusTabs = [
     { key: 'ALL', label: '全部' }, { key: 'PAID', label: '待发货' },
     { key: 'SHIPPED', label: '运输中' }, { key: 'DELIVERED', label: '已完成' }
 ];
 
+// 模态框控制
 const showDetailModal = ref(false);
 const currentOrderDetails = ref({});
 
 const products = ref([]);
 const showProductModal = ref(false);
 const editingProduct = ref({});
+
 const users = ref([]);
 const showPointModal = ref(false);
 const editingUser = ref({});
@@ -49,6 +56,7 @@ const Toast = Swal.mixin({
 const currentPageTitle = computed(() => {
     const map = {
         'dashboard': '运营概况',
+        'orders': '订单管理', // 新增
         'products': '商品库管理',
         'users': '会员管理',
         'refund': '售后处理中心'
@@ -58,14 +66,13 @@ const currentPageTitle = computed(() => {
 
 watch(() => route.path, () => { isSidebarOpen.value = false; });
 
+// WebSocket 初始化
 let socket = null;
 const initWebSocket = () => {
     if (typeof (WebSocket) === "undefined") return;
-
     const token = localStorage.getItem('token') || '';
-
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-
+    // 注意：根据你的后端端口调整，这里假设后端是 8080
     const wsUrl = `${protocol}localhost:8080/ws/orders?token=${token}`;
 
     socket = new WebSocket(wsUrl);
@@ -79,7 +86,7 @@ const initWebSocket = () => {
             Toast.fire({ icon: 'info', title: '🔔 收到新订单！', text: '列表已自动刷新' });
             if (currentTab.value === 'dashboard' || currentTab.value === 'orders') {
                 fetchStats();
-                fetchOrders(false);
+                fetchOrders(false); // 不显示 loading 遮罩
             }
         }
     };
@@ -137,6 +144,7 @@ const initChart = () => {
     window.addEventListener('resize', () => myChart && myChart.resize());
 };
 
+// 获取统计数据
 const fetchStats = async () => {
     try {
         const res = await request.get('/api/admin/stats');
@@ -145,14 +153,19 @@ const fetchStats = async () => {
     } catch (err) { console.error(err); }
 };
 
+// 获取订单列表
 const fetchOrders = async (showLoading = true) => {
     if (showLoading) { loading.value = true; displayedOrders.value = []; }
     try {
         const params = new URLSearchParams({ page: orderQuery.value.page, size: orderQuery.value.size, keyword: orderQuery.value.keyword });
-        if (showLoading) await new Promise(r => setTimeout(r, 400));
+        if (showLoading) await new Promise(r => setTimeout(r, 400)); // 模拟加载感
+
         const res = await request.get(`/api/admin/orders?${params.toString()}`);
+
         let rawList = Array.isArray(res) ? res : (res.content || []);
-        orderQuery.value.total = Array.isArray(res) ? res.length : (res.totalElements || 0);
+        // 更新总页数/总条数，如果后端没返回 Page 对象，这里需要根据实际情况调整
+        orderQuery.value.total = res.totalElements || rawList.length;
+
         allOrders.value = rawList;
         applyClientSideFilter();
     } catch (err) { console.error(err); } finally { loading.value = false; }
@@ -183,15 +196,17 @@ const handleShip = async (id) => {
 };
 
 const openDetailModal = (o) => { currentOrderDetails.value = o; showDetailModal.value = true; };
-const formatStatus = (s) => ({ 'PAID': '待发货', 'SHIPPED': '运输中', 'DELIVERED': '已送达', '已送达': '已送达' }[s] || s);
+const formatStatus = (s) => ({ 'PAID': '待发货', 'SHIPPED': '运输中', 'DELIVERED': '已送达', '已送达': '已送达', '售后处理中': '售后中', '退款成功': '已退款' }[s] || s);
 const getStatusClass = (s) => {
     const base = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ";
     if (['PAID', '待发货'].includes(s)) return base + "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
     if (['SHIPPED', '运输中'].includes(s)) return base + "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
     if (['DELIVERED', '已送达'].includes(s)) return base + "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+    if (['售后处理中', '退款成功'].includes(s)) return base + "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300";
     return base + "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300";
 };
 
+// 商品管理相关
 const fetchProducts = async () => {
     loading.value = true; products.value = [];
     try { await new Promise(r => setTimeout(r, 300)); const res = await request.get('/api/products'); products.value = res || []; }
@@ -207,6 +222,7 @@ const saveProduct = async () => {
 };
 const handleDeleteProduct = async (id) => { if ((await Swal.fire({ title: '删除?', icon: 'warning', showCancelButton: true })).isConfirmed) { await request.delete(`/api/products/${id}`); fetchProducts(); Toast.fire('已删除', '', 'success'); } };
 
+// 用户管理相关
 const fetchUsers = async () => {
     loading.value = true; users.value = [];
     try { await new Promise(r => setTimeout(r, 300)); users.value = await request.get('/api/admin/users') || []; }
@@ -216,6 +232,7 @@ const openPointModal = (u) => { editingUser.value = { ...u }; showPointModal.val
 const saveUserPoints = async () => { await request.put(`/api/admin/users/${editingUser.value.id}/points`, { points: parseInt(editingUser.value.points) }); showPointModal.value = false; fetchUsers(); Toast.fire('修改成功', '', 'success'); };
 const handleDeleteUser = async (id) => { if ((await Swal.fire({ title: '删除用户?', icon: 'error', showCancelButton: true })).isConfirmed) { await request.delete(`/api/admin/users/${id}`); fetchUsers(); } };
 
+// 售后相关
 const fetchRefunds = async () => {
     loading.value = true;
     try {
@@ -261,7 +278,7 @@ const handleRefundAction = async (orderId, action) => {
             reason: isApprove ? '审核通过' : rejectReason,
             adminUsername: currentUser.value.username
         });
-        
+
         Toast.fire(isApprove ? '已同意退款' : '已拒绝申请', '', 'success');
         fetchRefunds();
     } catch (e) {
@@ -269,10 +286,21 @@ const handleRefundAction = async (orderId, action) => {
     }
 }
 
+// 切换 Tab 逻辑
 const switchTab = (tab) => {
     currentTab.value = tab;
     if (window.innerWidth < 1024) isSidebarOpen.value = false;
-    if (tab === 'dashboard') { fetchStats(); fetchOrders(); }
+
+    if (tab === 'dashboard') {
+        fetchStats();
+        orderQuery.value.page = 1; // 仪表盘通常看最新
+        fetchOrders();
+    }
+    else if (tab === 'orders') { // 新增：切换到订单管理
+        orderQuery.value.page = 1;
+        orderQuery.value.status = 'ALL';
+        fetchOrders();
+    }
     else if (tab === 'products') fetchProducts();
     else if (tab === 'users') fetchUsers();
     else if (tab === 'refund') fetchRefunds();
@@ -313,7 +341,15 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'dashboard'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span></span><span>数据总览</span>
+                    <span>📊</span><span>数据总览</span>
+                </a>
+
+                <a @click="switchTab('orders')"
+                    :class="['flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 font-medium',
+                        currentTab === 'orders'
+                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
+                    <span>📦</span><span>订单管理</span>
                 </a>
 
                 <a @click="switchTab('products')"
@@ -321,7 +357,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'products'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span></span><span>商品管理</span>
+                    <span>🛍️</span><span>商品管理</span>
                 </a>
 
                 <a @click="switchTab('refund')"
@@ -329,7 +365,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'refund'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span></span><span>售后处理</span>
+                    <span>🛡️</span><span>售后处理</span>
                 </a>
 
                 <a @click="switchTab('users')"
@@ -337,7 +373,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'users'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span></span><span>用户管理</span>
+                    <span>👥</span><span>用户管理</span>
                 </a>
             </nav>
 
@@ -367,7 +403,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                             <span class="text-blue-500">{{ currentPageTitle }}</span>
                         </div>
                         <h1 class="text-xl font-bold text-slate-800 dark:text-white tracking-tight">{{ currentPageTitle
-                        }}</h1>
+                            }}</h1>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -379,7 +415,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                     <div class="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-700">
                         <div class="text-right hidden sm:block">
                             <div class="text-sm font-bold text-slate-700 dark:text-slate-200">{{ currentUser.displayName
-                                }}</div>
+                            }}</div>
                             <div class="text-[10px] text-slate-400 uppercase">Administrator</div>
                         </div>
                         <div
@@ -426,12 +462,8 @@ onUnmounted(() => { if (socket) socket.close(); });
                     class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                     <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                         <h2 class="font-bold text-slate-800 dark:text-white">最新订单</h2>
-                        <div class="flex gap-2">
-                            <button v-for="tab in statusTabs" :key="tab.key" @click="switchStatusTab(tab.key)"
-                                :class="['px-3 py-1 text-xs rounded-lg font-bold transition-colors', orderQuery.status === tab.key ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800']">
-                                {{ tab.label }}
-                            </button>
-                        </div>
+                        <button @click="switchTab('orders')" class="text-sm text-blue-600 hover:underline">查看全部
+                            ></button>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
@@ -439,7 +471,6 @@ onUnmounted(() => { if (socket) socket.close(); });
                                 <tr>
                                     <th class="p-4">订单号</th>
                                     <th class="p-4 w-1/4">内容</th>
-                                    <th class="p-4">收货信息</th>
                                     <th class="p-4">用户</th>
                                     <th class="p-4">金额</th>
                                     <th class="p-4">状态</th>
@@ -447,20 +478,11 @@ onUnmounted(() => { if (socket) socket.close(); });
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                                <tr v-for="order in displayedOrders" :key="order.id"
+                                <tr v-for="order in displayedOrders.slice(0, 5)" :key="order.id"
                                     class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                                     <td class="p-4 font-mono">#{{ String(order.id).padStart(6, '0') }}</td>
                                     <td class="p-4 max-w-[200px] truncate" :title="order.productNames">{{
                                         order.productNames }}</td>
-                                    <td class="p-4">
-                                        <div v-if="order.receiverName">
-                                            <div class="font-bold text-slate-700 dark:text-slate-200">{{
-                                                order.receiverName }}</div>
-                                            <div class="text-xs text-slate-400 mt-0.5 truncate max-w-[150px]">{{
-                                                order.receiverAddress }}</div>
-                                        </div>
-                                        <div v-else class="text-xs text-slate-300 italic">(无信息)</div>
-                                    </td>
                                     <td class="p-4 font-bold">{{ order.username }}</td>
                                     <td class="p-4">¥{{ order.totalPrice.toFixed(2) }}</td>
                                     <td class="p-4"><span :class="getStatusClass(order.status)">{{
@@ -468,16 +490,97 @@ onUnmounted(() => { if (socket) socket.close(); });
                                     <td class="p-4 text-center">
                                         <button @click="openDetailModal(order)"
                                             class="text-blue-600 hover:underline mr-3">详情</button>
-                                        <button v-if="['PAID', '待发货'].includes(order.status)"
-                                            @click="handleShip(order.id)"
-                                            class="text-blue-600 hover:underline font-bold">发货</button>
                                     </td>
-                                </tr>
-                                <tr v-if="displayedOrders.length === 0">
-                                    <td colspan="7" class="p-8 text-center text-slate-400">暂无相关订单</td>
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else-if="currentTab === 'orders'" class="animate-fade-in-up">
+                <div
+                    class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                    <div
+                        class="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <h2 class="font-bold text-slate-800 dark:text-white">订单管理</h2>
+
+                        <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                            <div class="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                                <button v-for="tab in statusTabs" :key="tab.key" @click="switchStatusTab(tab.key)"
+                                    :class="['px-3 py-1.5 text-xs rounded-md font-bold transition-colors', orderQuery.status === tab.key ? 'bg-white shadow text-blue-600 dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400']">
+                                    {{ tab.label }}
+                                </button>
+                            </div>
+                            <div class="flex gap-2">
+                                <input v-model="orderQuery.keyword" @keyup.enter="handleSearch" placeholder="搜索订单/用户..."
+                                    class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-white">
+                                <button @click="handleSearch"
+                                    class="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-bold">搜索</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto min-h-[400px]">
+                        <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
+                            <thead class="bg-slate-50 dark:bg-slate-800/50 text-xs uppercase font-bold text-slate-400">
+                                <tr>
+                                    <th class="p-4">订单号</th>
+                                    <th class="p-4 w-1/4">商品信息</th>
+                                    <th class="p-4">收货人</th>
+                                    <th class="p-4">用户账号</th>
+                                    <th class="p-4">实付金额</th>
+                                    <th class="p-4">当前状态</th>
+                                    <th class="p-4 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                                <tr v-for="order in displayedOrders" :key="order.id"
+                                    class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                    <td class="p-4 font-mono">#{{ 20250000 + order.id }}</td>
+                                    <td class="p-4 max-w-[200px]" :title="order.productNames">
+                                        <div class="truncate font-medium">{{ order.productNames }}</div>
+                                        <div class="text-xs text-slate-400 mt-0.5">{{ new
+                                            Date(order.createTime).toLocaleString() }}</div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div v-if="order.receiverName">
+                                            <div class="font-bold text-slate-700 dark:text-slate-200">{{
+                                                order.receiverName }}</div>
+                                            <div class="text-xs text-slate-400 mt-0.5">{{ order.receiverPhone }}</div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 font-bold">{{ order.username }}</td>
+                                    <td class="p-4 font-mono">¥{{ order.totalPrice.toFixed(2) }}</td>
+                                    <td class="p-4"><span :class="getStatusClass(order.status)">{{
+                                        formatStatus(order.status) }}</span></td>
+                                    <td class="p-4 text-center">
+                                        <button @click="openDetailModal(order)"
+                                            class="text-blue-600 hover:underline mr-3 font-medium">详情</button>
+                                        <button v-if="['PAID', '待发货'].includes(order.status)"
+                                            @click="handleShip(order.id)"
+                                            class="text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-lg text-xs shadow-sm shadow-blue-200 dark:shadow-none">发货</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="displayedOrders.length === 0">
+                                    <td colspan="7" class="p-12 text-center text-slate-400">
+                                        <div class="text-4xl mb-2">🍃</div>
+                                        暂无符合条件的订单
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div
+                        class="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center items-center gap-4">
+                        <button @click="changePage(orderQuery.page - 1)" :disabled="orderQuery.page <= 1"
+                            class="px-4 py-2 border rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:hover:bg-slate-800 text-sm">上一页</button>
+                        <span class="text-sm font-bold text-slate-600 dark:text-slate-400">第 {{ orderQuery.page }}
+                            页</span>
+                        <button @click="changePage(orderQuery.page + 1)"
+                            :disabled="displayedOrders.length < orderQuery.size"
+                            class="px-4 py-2 border rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:hover:bg-slate-800 text-sm">下一页</button>
                     </div>
                 </div>
             </div>
@@ -528,14 +631,13 @@ onUnmounted(() => { if (socket) socket.close(); });
                     <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                         <h2 class="font-bold text-slate-800 dark:text-white">售后申请列表</h2>
                         <span class="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">待处理: {{
-                            refundList.filter(r => r.status === 'PENDING').length}}</span>
+                            refundList.filter(r => r.status === '售后处理中' || r.status === 'PENDING').length}}</span>
                     </div>
                     <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
                         <thead class="bg-slate-50 dark:bg-slate-800/50 font-bold text-slate-500">
                             <tr>
-                                <th class="p-5">售后单号</th>
                                 <th class="p-5">关联订单</th>
-                                <th class="p-5">用户</th>
+                                <th class="p-5">申请用户</th>
                                 <th class="p-5">退款金额</th>
                                 <th class="p-5">申请原因</th>
                                 <th class="p-5">状态</th>
@@ -543,34 +645,43 @@ onUnmounted(() => { if (socket) socket.close(); });
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                            <tr v-for="rf in refundList" :key="rf.id"
+                            <tr v-for="rf in refundList" :key="rf.id || rf.orderId"
                                 class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                <td class="p-5 font-mono text-xs text-slate-400">{{ rf.id }}</td>
-                                <td class="p-5 font-mono text-xs text-blue-500 hover:underline cursor-pointer">{{
-                                    rf.orderId }}</td>
-                                <td class="p-5 font-bold">{{ rf.user }}</td>
-                                <td class="p-5 font-mono font-bold text-slate-800 dark:text-white">¥{{ rf.amount }}</td>
-                                <td class="p-5 text-slate-500">{{ rf.reason }}</td>
+                                <td class="p-5 font-mono text-xs text-blue-500 hover:underline cursor-pointer">
+                                    #{{ 20250000 + (rf.orderId || rf.id) }}
+                                    <div class="text-[10px] text-slate-400 mt-1">{{ new Date(rf.applyTime ||
+                                        rf.createTime).toLocaleString() }}</div>
+                                </td>
+                                <td class="p-5 font-bold">{{ rf.username || rf.user }}</td>
+                                <td class="p-5 font-mono font-bold text-slate-800 dark:text-white">¥{{ (rf.amount ||
+                                    rf.totalPrice || 0).toFixed(2) }}</td>
+                                <td class="p-5 text-slate-500 max-w-[200px] truncate" :title="rf.reason">{{ rf.reason ||
+                                    '无详细原因' }}</td>
                                 <td class="p-5">
-                                    <span v-if="rf.status === 'PENDING'"
+                                    <span v-if="rf.status === '售后处理中' || rf.status === 'PENDING'"
                                         class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs font-bold">待处理</span>
-                                    <span v-else-if="rf.status === 'APPROVED'"
+                                    <span v-else-if="rf.status === '退款成功' || rf.status === 'APPROVED'"
                                         class="bg-green-100 text-green-600 px-2 py-1 rounded text-xs font-bold">已同意</span>
                                     <span v-else
-                                        class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-bold">已拒绝</span>
+                                        class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">{{
+                                        rf.status }}</span>
                                 </td>
                                 <td class="p-5 text-center">
-                                    <div v-if="rf.status === 'PENDING'" class="flex justify-center gap-2">
-                                        <button @click="handleRefundAction(rf.id, 'approve')"
-                                            class="text-green-600 hover:bg-green-50 px-2 py-1 rounded text-xs font-bold border border-green-200 transition">同意</button>
-                                        <button @click="handleRefundAction(rf.id, 'reject')"
-                                            class="text-red-600 hover:bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200 transition">拒绝</button>
+                                    <div v-if="rf.status === '售后处理中' || rf.status === 'PENDING'"
+                                        class="flex justify-center gap-2">
+                                        <button @click="handleRefundAction(rf.orderId || rf.id, 'approve')"
+                                            class="text-green-600 hover:bg-green-50 px-3 py-1 rounded text-xs font-bold border border-green-200 transition">同意</button>
+                                        <button @click="handleRefundAction(rf.orderId || rf.id, 'reject')"
+                                            class="text-red-600 hover:bg-red-50 px-3 py-1 rounded text-xs font-bold border border-red-200 transition">拒绝</button>
                                     </div>
                                     <span v-else class="text-xs text-slate-400">已归档</span>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                    <div v-if="refundList.length === 0" class="p-12 text-center text-slate-400">
+                        暂无售后申请
+                    </div>
                 </div>
             </div>
 
@@ -632,6 +743,19 @@ onUnmounted(() => { if (socket) socket.close(); });
                             class="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">取消</button>
                         <button @click="saveProduct"
                             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="showPointModal"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-scale-up">
+                    <h3 class="font-bold mb-4 dark:text-white">修改积分</h3>
+                    <input v-model="editingUser.points" type="number"
+                        class="w-full p-3 border rounded-xl mb-4 dark:bg-slate-800 dark:border-slate-700 dark:text-white">
+                    <div class="flex justify-end gap-3">
+                        <button @click="showPointModal = false" class="px-4 py-2 text-slate-500">取消</button>
+                        <button @click="saveUserPoints" class="px-4 py-2 bg-blue-600 text-white rounded-lg">保存</button>
                     </div>
                 </div>
             </div>

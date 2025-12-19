@@ -564,11 +564,18 @@ const getStatusColor = (s) => {
               <div class="text-6xl mb-4 opacity-20">📭</div>
               <p class="text-slate-500">暂无售后记录</p>
             </div>
+
             <div v-for="order in afterSalesOrders" :key="order.id"
               class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-              <div
-                class="absolute top-0 right-0 px-4 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-bl-xl">
-                处理中</div>
+
+              <div class="absolute top-0 right-0 px-4 py-1 text-xs font-bold rounded-bl-xl" :class="{
+                'bg-orange-100 text-orange-700': order.status === '售后处理中',
+                'bg-green-100 text-green-700': order.status === '退款成功',
+                'bg-slate-100 text-slate-700': order.status === '已退货'
+              }">
+                {{ order.status === '售后处理中' ? '处理中' : (order.status === '退款成功' ? '退款成功' : order.status) }}
+              </div>
+
               <h3 class="font-bold text-slate-800 mb-2">售后单 #AS{{ 20250000 + order.id }}</h3>
               <div class="flex gap-4 bg-slate-50 p-3 rounded-xl mb-4">
                 <img :src="order.items?.[0]?.imageUrl" class="w-12 h-12 rounded-lg object-cover">
@@ -577,11 +584,27 @@ const getStatusColor = (s) => {
                   <div class="text-xs text-slate-400">退款金额: ¥{{ order.totalPrice }}</div>
                 </div>
               </div>
+
               <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                <div class="bg-orange-500 h-full w-2/3 rounded-full animate-pulse"></div>
+                <div class="h-full rounded-full transition-all duration-500" :class="{
+                  'bg-orange-500 w-2/3 animate-pulse': order.status === '售后处理中',
+                  'bg-green-500 w-full': order.status === '退款成功'
+                }">
+                </div>
               </div>
-              <div class="flex justify-between text-[10px] text-slate-400 mt-2"><span>提交申请</span><span
-                  class="text-orange-600 font-bold">商家审核中</span><span>退款到账</span></div>
+
+              <div class="flex justify-between text-[10px] text-slate-400 mt-2">
+                <span>提交申请</span>
+
+                <span :class="{
+                  'text-orange-600 font-bold': order.status === '售后处理中',
+                  'text-green-600': order.status === '退款成功'
+                }">商家审核{{ order.status === '售后处理中' ? '中' : '通过' }}</span>
+
+                <span :class="{
+                  'text-green-600 font-bold': order.status === '退款成功'
+                }">退款到账</span>
+              </div>
             </div>
           </div>
 

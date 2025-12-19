@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.yuxian.backend.dto.RefundDetailVO;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -211,5 +212,34 @@ public class OrderServiceImpl implements OrderService {
 
         refundFeedbackRepository.save(adminFeedback);
         orderRepository.save(order);
+    }
+
+    @Override
+    public List<RefundDetailVO> getPendingRefundsWithDetails() {
+        // 1. 获取所有状态为"售后处理中"的订单
+        List<OrderRecord> orders = orderRepository.findByStatusOrderByCreateTimeDesc("售后处理中");
+
+        List<RefundDetailVO> result = new ArrayList<>();
+
+        for (OrderRecord order : orders) {
+
+            List<RefundFeedback> feedbacks = refundFeedbackRepository.findByOrderId(order.getId());
+
+            String reason = "无详细原因";
+            if (!feedbacks.isEmpty()) {
+                // 取最后一条，通常是用户的申请
+                reason = feedbacks.get(feedbacks.size() - 1).getContent();
+            }
+
+            result.add(new RefundDetailVO(
+                    order.getId(),
+                    order.getUsername(),
+                    order.getTotalPrice(),
+                    reason,
+                    order.getStatus(),
+                    order.getProductNames(),
+                    order.getCreateTime()));
+        }
+        return result;
     }
 }

@@ -69,7 +69,7 @@ public class OrderController {
     @GetMapping("/admin/refunds")
    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getPendingRefunds() {
-        return ResponseEntity.ok(orderService.getPendingRefundOrders());
+        return ResponseEntity.ok(orderService.getPendingRefundsWithDetails());
     }
 
     @PostMapping("/admin/refunds/{id}/audit")

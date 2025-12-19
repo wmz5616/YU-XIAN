@@ -4,6 +4,7 @@ import com.yuxian.backend.entity.Address;
 import com.yuxian.backend.entity.OrderRecord;
 import java.util.List;
 import java.util.Map;
+import com.yuxian.backend.dto.RefundDetailVO;
 
 public interface OrderService {
     Long createOrder(String username, List<Map<String, Object>> itemPayloads, Address addressSnapshot, Long couponId);
@@ -15,4 +16,6 @@ public interface OrderService {
     void auditRefund(Long orderId, boolean pass, String rejectReason, String adminUsername);
 
     void payOrder(Long orderId, String username);
+
+    List<RefundDetailVO> getPendingRefundsWithDetails();
 }

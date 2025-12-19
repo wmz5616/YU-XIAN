@@ -8,4 +8,6 @@ public interface RefundFeedbackRepository extends JpaRepository<RefundFeedback, 
 
     List<RefundFeedback> findByOrderIdOrderByCreateTimeAsc(Long orderId);
 
+    List<RefundFeedback> findByOrderId(Long id);
+
 }
