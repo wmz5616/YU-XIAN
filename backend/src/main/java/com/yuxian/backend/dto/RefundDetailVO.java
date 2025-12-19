@@ -12,7 +12,6 @@ public class RefundDetailVO {
     private String productNames;
     private LocalDateTime applyTime;
 
-    // 构造函数
     public RefundDetailVO(Long orderId, String username, BigDecimal amount, String reason, String status, String productNames, LocalDateTime applyTime) {
         this.orderId = orderId;
         this.username = username;
@@ -23,7 +22,6 @@ public class RefundDetailVO {
         this.applyTime = applyTime;
     }
 
-    // Getters and Setters
     public Long getOrderId() { return orderId; }
     public void setOrderId(Long orderId) { this.orderId = orderId; }
     public String getUsername() { return username; }

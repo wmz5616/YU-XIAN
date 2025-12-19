@@ -20,6 +20,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -46,13 +47,24 @@ public class AdminController {
     public Map<String, Object> getOrders(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false, defaultValue = "") String keyword) {
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false, defaultValue = "ALL") String status
+        ) {
 
-        Pageable pageable = PageRequest.of(page - 1, size);
+        Sort sort = Sort.by(Sort.Direction.DESC, "createTime");
+        Pageable pageable = PageRequest.of(page - 1, size, sort);
 
         Page<OrderRecord> orderPage;
-        if (keyword != null && !keyword.isEmpty()) {
+
+        boolean hasKeyword = keyword != null && !keyword.isEmpty();
+        boolean hasStatus = status != null && !status.isEmpty() && !"ALL".equals(status);
+
+        if (hasKeyword && hasStatus) {
+            orderPage = orderRepository.findByUsernameContainingAndStatusOrderByCreateTimeDesc(keyword, status, pageable);
+        } else if (hasKeyword) {
             orderPage = orderRepository.findByUsernameContainingOrderByCreateTimeDesc(keyword, pageable);
+        } else if (hasStatus) {
+            orderPage = orderRepository.findByStatusOrderByCreateTimeDesc(status, pageable);
         } else {
             orderPage = orderRepository.findAll(pageable);
         }

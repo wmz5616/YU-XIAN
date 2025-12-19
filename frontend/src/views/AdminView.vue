@@ -14,29 +14,26 @@ const loading = ref(false);
 const isSidebarOpen = ref(false);
 const isDark = ref(localStorage.getItem('theme') === 'dark');
 
-// 售后列表数据
 const refundList = ref([]);
 
-// 统计数据
 const stats = ref({
     totalSales: 0, totalOrders: 0, totalUsers: 0, pendingOrders: 0, totalProducts: 0,
     chartData: { dates: [], values: [] }
 });
 
-// 订单数据
-const allOrders = ref([]); // 原始数据
-const displayedOrders = ref([]); // 前端展示数据（经过筛选）
+const displayedOrders = ref([]);
 const chartRef = ref(null);
 let myChart = null;
 
-// 订单查询参数
 const orderQuery = ref({ page: 1, size: 10, keyword: '', status: 'ALL', total: 0 });
+
 const statusTabs = [
-    { key: 'ALL', label: '全部' }, { key: 'PAID', label: '待发货' },
-    { key: 'SHIPPED', label: '运输中' }, { key: 'DELIVERED', label: '已完成' }
+    { key: 'ALL', label: '全部' },
+    { key: 'PAID', label: '待发货' },
+    { key: 'SHIPPED', label: '运输中' },
+    { key: 'DELIVERED', label: '已送达' }
 ];
 
-// 模态框控制
 const showDetailModal = ref(false);
 const currentOrderDetails = ref({});
 
@@ -56,7 +53,7 @@ const Toast = Swal.mixin({
 const currentPageTitle = computed(() => {
     const map = {
         'dashboard': '运营概况',
-        'orders': '订单管理', // 新增
+        'orders': '订单管理',
         'products': '商品库管理',
         'users': '会员管理',
         'refund': '售后处理中心'
@@ -66,13 +63,11 @@ const currentPageTitle = computed(() => {
 
 watch(() => route.path, () => { isSidebarOpen.value = false; });
 
-// WebSocket 初始化
 let socket = null;
 const initWebSocket = () => {
     if (typeof (WebSocket) === "undefined") return;
     const token = localStorage.getItem('token') || '';
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    // 注意：根据你的后端端口调整，这里假设后端是 8080
     const wsUrl = `${protocol}localhost:8080/ws/orders?token=${token}`;
 
     socket = new WebSocket(wsUrl);
@@ -86,7 +81,7 @@ const initWebSocket = () => {
             Toast.fire({ icon: 'info', title: '🔔 收到新订单！', text: '列表已自动刷新' });
             if (currentTab.value === 'dashboard' || currentTab.value === 'orders') {
                 fetchStats();
-                fetchOrders(false); // 不显示 loading 遮罩
+                fetchOrders(false);
             }
         }
     };
@@ -144,7 +139,6 @@ const initChart = () => {
     window.addEventListener('resize', () => myChart && myChart.resize());
 };
 
-// 获取统计数据
 const fetchStats = async () => {
     try {
         const res = await request.get('/api/admin/stats');
@@ -153,37 +147,45 @@ const fetchStats = async () => {
     } catch (err) { console.error(err); }
 };
 
-// 获取订单列表
 const fetchOrders = async (showLoading = true) => {
-    if (showLoading) { loading.value = true; displayedOrders.value = []; }
+    if (showLoading) {
+        loading.value = true;
+        displayedOrders.value = [];
+    }
     try {
-        const params = new URLSearchParams({ page: orderQuery.value.page, size: orderQuery.value.size, keyword: orderQuery.value.keyword });
-        if (showLoading) await new Promise(r => setTimeout(r, 400)); // 模拟加载感
+        const params = new URLSearchParams({
+            page: orderQuery.value.page,
+            size: orderQuery.value.size,
+            keyword: orderQuery.value.keyword,
+            status: orderQuery.value.status
+        });
+
+        if (showLoading) await new Promise(r => setTimeout(r, 400));
 
         const res = await request.get(`/api/admin/orders?${params.toString()}`);
 
         let rawList = Array.isArray(res) ? res : (res.content || []);
-        // 更新总页数/总条数，如果后端没返回 Page 对象，这里需要根据实际情况调整
-        orderQuery.value.total = res.totalElements || rawList.length;
 
-        allOrders.value = rawList;
-        applyClientSideFilter();
-    } catch (err) { console.error(err); } finally { loading.value = false; }
+        displayedOrders.value = rawList;
+        
+        orderQuery.value.total = res.totalElements || 0;
+
+    } catch (err) {
+        console.error(err);
+        Toast.fire('获取订单失败', '', 'error');
+    } finally {
+        loading.value = false;
+    }
 };
 
-const applyClientSideFilter = () => {
-    const status = orderQuery.value.status;
-    if (status === 'ALL') displayedOrders.value = allOrders.value;
-    else displayedOrders.value = allOrders.value.filter(o => {
-        if (status === 'PAID') return o.status === 'PAID' || o.status === '待发货';
-        if (status === 'SHIPPED') return o.status === 'SHIPPED' || o.status === '运输中';
-        if (status === 'DELIVERED') return o.status === 'DELIVERED' || o.status === '已送达';
-        return o.status === status;
-    });
+const switchStatusTab = (k) => { 
+    orderQuery.value.status = k; 
+    orderQuery.value.page = 1;
+    fetchOrders();
 };
 
-const switchStatusTab = (k) => { orderQuery.value.status = k; applyClientSideFilter(); };
 const handleSearch = () => { orderQuery.value.page = 1; fetchOrders(); };
+
 const changePage = (p) => { if (p < 1) return; orderQuery.value.page = p; fetchOrders(); };
 
 const handleShip = async (id) => {
@@ -206,7 +208,6 @@ const getStatusClass = (s) => {
     return base + "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300";
 };
 
-// 商品管理相关
 const fetchProducts = async () => {
     loading.value = true; products.value = [];
     try { await new Promise(r => setTimeout(r, 300)); const res = await request.get('/api/products'); products.value = res || []; }
@@ -222,7 +223,6 @@ const saveProduct = async () => {
 };
 const handleDeleteProduct = async (id) => { if ((await Swal.fire({ title: '删除?', icon: 'warning', showCancelButton: true })).isConfirmed) { await request.delete(`/api/products/${id}`); fetchProducts(); Toast.fire('已删除', '', 'success'); } };
 
-// 用户管理相关
 const fetchUsers = async () => {
     loading.value = true; users.value = [];
     try { await new Promise(r => setTimeout(r, 300)); users.value = await request.get('/api/admin/users') || []; }
@@ -232,7 +232,6 @@ const openPointModal = (u) => { editingUser.value = { ...u }; showPointModal.val
 const saveUserPoints = async () => { await request.put(`/api/admin/users/${editingUser.value.id}/points`, { points: parseInt(editingUser.value.points) }); showPointModal.value = false; fetchUsers(); Toast.fire('修改成功', '', 'success'); };
 const handleDeleteUser = async (id) => { if ((await Swal.fire({ title: '删除用户?', icon: 'error', showCancelButton: true })).isConfirmed) { await request.delete(`/api/admin/users/${id}`); fetchUsers(); } };
 
-// 售后相关
 const fetchRefunds = async () => {
     loading.value = true;
     try {
@@ -286,17 +285,16 @@ const handleRefundAction = async (orderId, action) => {
     }
 }
 
-// 切换 Tab 逻辑
 const switchTab = (tab) => {
     currentTab.value = tab;
     if (window.innerWidth < 1024) isSidebarOpen.value = false;
 
     if (tab === 'dashboard') {
         fetchStats();
-        orderQuery.value.page = 1; // 仪表盘通常看最新
+        orderQuery.value.page = 1;
         fetchOrders();
     }
-    else if (tab === 'orders') { // 新增：切换到订单管理
+    else if (tab === 'orders') {
         orderQuery.value.page = 1;
         orderQuery.value.status = 'ALL';
         fetchOrders();
@@ -564,7 +562,6 @@ onUnmounted(() => { if (socket) socket.close(); });
                                 </tr>
                                 <tr v-if="displayedOrders.length === 0">
                                     <td colspan="7" class="p-12 text-center text-slate-400">
-                                        <div class="text-4xl mb-2">🍃</div>
                                         暂无符合条件的订单
                                     </td>
                                 </tr>
@@ -664,7 +661,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                                         class="bg-green-100 text-green-600 px-2 py-1 rounded text-xs font-bold">已同意</span>
                                     <span v-else
                                         class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">{{
-                                        rf.status }}</span>
+                                            rf.status }}</span>
                                 </td>
                                 <td class="p-5 text-center">
                                     <div v-if="rf.status === '售后处理中' || rf.status === 'PENDING'"
