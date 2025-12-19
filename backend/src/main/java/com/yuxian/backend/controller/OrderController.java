@@ -35,7 +35,7 @@ public class OrderController {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
 
         List<Map<String, Object>> items = (List<Map<String, Object>>) payload.get("items");
-        
+
         Map<String, String> addrMap = (Map<String, String>) payload.get("address");
         Address address = new Address();
         address.setContact(addrMap.get("contact"));
@@ -48,12 +48,11 @@ public class OrderController {
         }
 
         Long orderId = orderService.createOrder(username, items, address, couponId);
-        
+
         return ResponseEntity.ok(Map.of(
-            "success", true,
-            "message", "订单已创建，请前往支付",
-            "orderId", orderId
-        ));
+                "success", true,
+                "message", "订单已创建，请前往支付",
+                "orderId", orderId));
     }
 
     @PostMapping("/{id}/refund")
@@ -84,9 +83,9 @@ public class OrderController {
     @PostMapping("/{id}/pay")
     public ResponseEntity<String> payOrder(@PathVariable Long id) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        
+
         orderService.payOrder(id, username);
-        
+
         return ResponseEntity.ok("支付成功");
     }
 }

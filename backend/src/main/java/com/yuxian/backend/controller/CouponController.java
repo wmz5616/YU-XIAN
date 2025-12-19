@@ -118,11 +118,11 @@ public class CouponController {
         uc.setUsername(username);
         uc.setCouponId(-1L);
         uc.setCouponName(name);
-        
+
         BigDecimal amountDecimal = BigDecimal.valueOf(amountDouble);
         uc.setAmount(amountDecimal);
         uc.setMinSpend(amountDecimal.multiply(BigDecimal.TEN));
-        
+
         uc.setStatus("UNUSED");
         uc.setReceiveTime(LocalDateTime.now());
 

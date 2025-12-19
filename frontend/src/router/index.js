@@ -9,7 +9,7 @@ import CheckoutView from "../views/CheckoutView.vue";
 import PaymentSuccessView from "../views/PaymentSuccessView.vue";
 import NotFoundView from "../views/NotFoundView.vue";
 import PointsView from "../views/PointsView.vue";
-import OrdersView from '../views/OrdersView.vue'
+import OrdersView from "../views/OrdersView.vue";
 
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
@@ -103,9 +103,9 @@ const router = createRouter({
       meta: { title: "会员积分中心" },
     },
     {
-      path: '/orders',
-      name: 'orders',
-      component: OrdersView
+      path: "/orders",
+      name: "orders",
+      component: OrdersView,
     },
   ],
 });
@@ -123,11 +123,9 @@ router.beforeEach((to, from, next) => {
   const userStr = localStorage.getItem("yuxian_user");
   const user = userStr ? JSON.parse(userStr) : null;
 
-  // 2. 检查是否需要管理员权限
   if (to.meta.requiresAdmin) {
     if (!user || user.role !== "ADMIN") {
-      // 没登录或者不是管理员，踢回首页或登录页
-      alert("无权访问"); // 可选：给个提示
+      alert("无权访问");
       next("/");
       return;
     }

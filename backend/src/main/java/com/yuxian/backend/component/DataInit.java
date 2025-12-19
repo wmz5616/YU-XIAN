@@ -157,16 +157,16 @@ public class DataInit implements CommandLineRunner {
 
                 String key = name.split("\\(")[0];
                 double[] range = PRICE_RANGES.entrySet().stream()
-                    .filter(entry -> key.contains(entry.getKey()))
-                    .map(Map.Entry::getValue)
-                    .findFirst()
-                    .orElse(PRICE_RANGES.getOrDefault("DEFAULT", new double[]{30.0, 60.0}));
+                        .filter(entry -> key.contains(entry.getKey()))
+                        .map(Map.Entry::getValue)
+                        .findFirst()
+                        .orElse(PRICE_RANGES.getOrDefault("DEFAULT", new double[] { 30.0, 60.0 }));
 
                 double randomPrice = range[0] + Math.random() * (range[1] - range[0]);
                 double roundedPrice = Math.round(randomPrice * 100.0) / 100.0;
 
                 p.setPrice(BigDecimal.valueOf(roundedPrice));
-                
+
                 p.setStock((int) (Math.random() * 190) + 10);
 
                 String imgPath = getImageMapping(name);

@@ -36,7 +36,7 @@ public class UserController {
     public Map<String, Object> register(@RequestBody User user) {
         Map<String, Object> response = new HashMap<>();
 
-        String regex = "^[a-zA-Z0-9]{4,20}$"; 
+        String regex = "^[a-zA-Z0-9]{4,20}$";
         if (!Pattern.matches(regex, user.getUsername())) {
             response.put("success", false);
             response.put("message", "注册失败：用户名需为4-20位字母或数字");
@@ -54,7 +54,7 @@ public class UserController {
         }
 
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        
+
         userRepository.save(user);
         response.put("success", true);
         response.put("message", "注册成功");
@@ -68,12 +68,12 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("用户名或密码错误");
         }
         String token = jwtUtils.generateToken(user.getUsername());
-        
+
         Map<String, Object> response = new HashMap<>();
-        response.put("user", user);     
+        response.put("user", user);
         response.put("role", user.getRole());
         response.put("token", token);
-        
+
         return ResponseEntity.ok(response);
     }
 
@@ -93,35 +93,36 @@ public class UserController {
     }
 
     @PostMapping("/upload-avatar")
-    public ResponseEntity<?> uploadAvatar(@RequestParam("username") String username, 
-                                          @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> uploadAvatar(@RequestParam("username") String username,
+            @RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
-             return ResponseEntity.badRequest().body("文件不能为空");
+            return ResponseEntity.badRequest().body("文件不能为空");
         }
-        
+
         try {
             String projectPath = System.getProperty("user.dir");
-            
+
             String staticPath = "/src/main/resources/static/images/avatars/";
             if (projectPath.endsWith("backend")) {
                 staticPath = "/src/main/resources/static/images/avatars/";
             } else {
                 staticPath = "/backend/src/main/resources/static/images/avatars/";
             }
-            
+
             String uploadDir = projectPath + staticPath;
             File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
+            if (!dir.exists())
+                dir.mkdirs();
 
             String originalFilename = file.getOriginalFilename();
-            String suffix = originalFilename != null && originalFilename.contains(".") 
-                          ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
-                          : ".jpg";
+            String suffix = originalFilename != null && originalFilename.contains(".")
+                    ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                    : ".jpg";
             String fileName = UUID.randomUUID().toString() + suffix;
 
             File dest = new File(dir, fileName);
             file.transferTo(dest);
-            
+
             String avatarUrl = "/images/avatars/" + fileName;
 
             User user = userRepository.findByUsername(username);
@@ -131,7 +132,7 @@ public class UserController {
                 return ResponseEntity.ok(user);
             }
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在");
-            
+
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("上传失败: " + e.getMessage());

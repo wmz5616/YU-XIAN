@@ -1,25 +1,25 @@
 package com.yuxian.backend.config;
 
-import com.yuxian.backend.entity.User; // 引入实体
-import com.yuxian.backend.repository.UserRepository; // 引入仓库
+import com.yuxian.backend.entity.User;
+import com.yuxian.backend.repository.UserRepository;
 import com.yuxian.backend.utils.JwtUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority; // 引入权限类
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
-import java.util.Collections; // 引入集合工具
+import java.util.Collections;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
-    private final UserRepository userRepository; // 新增注入
+    private final UserRepository userRepository;
 
     public JwtFilter(JwtUtils jwtUtils, UserRepository userRepository) {
         this.jwtUtils = jwtUtils;
@@ -36,16 +36,15 @@ public class JwtFilter extends OncePerRequestFilter {
             String username = jwtUtils.validateToken(token);
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // 查库获取最新角色状态
+
                 User user = userRepository.findByUsername(username);
+
                 if (user != null) {
-                    // 构建带角色的 Authentication
-                    // 注意：Spring Security 默认角色前缀是 ROLE_
                     SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + user.getRole());
-                    
-                    UsernamePasswordAuthenticationToken auth = 
-                        new UsernamePasswordAuthenticationToken(user.getUsername(), null, Collections.singletonList(authority));
-                    
+
+                    UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                            user.getUsername(), null, Collections.singletonList(authority));
+
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 }
             }

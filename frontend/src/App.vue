@@ -8,11 +8,8 @@ const route = useRoute()
 const cartBtnRef = ref(null)
 const isScrolled = ref(false)
 
-// ✅ 核心判断：当前是否为后台管理页面
-// 只要路由路径以 '/admin' 开头，就认为是后台，隐藏商城组件
 const isAdminRoute = computed(() => route.path.startsWith('/admin'))
 
-// 滚动监听逻辑
 const handleScroll = () => {
   isScrolled.value = window.scrollY > 20
 }
@@ -25,13 +22,10 @@ onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
 })
 
-// 计算属性：判断顶栏是否应该透明
-// 只有在 "首页" 且 "未滚动" 时才透明，其他情况都是磨砂白
 const isTransparent = computed(() => {
   return route.path === '/' && !isScrolled.value
 })
 
-// 监听加入购物车动画
 watch(() => store.flySignal.id, () => {
   if (store.flySignal.rect) {
     startFlyAnimation(store.flySignal.rect, store.flySignal.img)
@@ -63,7 +57,6 @@ const startFlyAnimation = (startRect, imgUrl) => {
   flyer.appendChild(inner)
   document.body.appendChild(flyer)
 
-  // 强制重绘
   flyer.offsetHeight
 
   flyer.style.transform = `translateX(${x}px)`
@@ -388,7 +381,6 @@ const isActive = (path) => route.path === path
 </template>
 
 <style>
-/* 动画保持不变 */
 @keyframes slide-in {
   from {
     transform: translateX(100%);

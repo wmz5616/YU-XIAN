@@ -20,7 +20,6 @@ const isSearchFocused = ref(false)
 const searchHistory = ref(JSON.parse(localStorage.getItem('yuxian_search_history') || '[]'))
 const hotKeywords = ['帝王蟹', '三文鱼', '波士顿龙虾', '生蚝', '大闸蟹']
 
-// 分页与回顶逻辑
 const visibleCount = ref(12)
 const PAGE_SIZE = 12
 const showBackTop = ref(false)
@@ -162,7 +161,7 @@ onUnmounted(() => { window.removeEventListener('scroll', handleScroll) })
                 <div class="flex flex-wrap gap-2">
                   <span v-for="tag in searchHistory" :key="tag" @click="quickSearch(tag)"
                     class="bg-slate-100/80 hover:bg-blue-50 text-slate-600 hover:text-blue-600 px-3 py-1.5 rounded-lg text-sm cursor-pointer transition">{{
-                    tag }}</span>
+                      tag }}</span>
                 </div>
               </div>
               <div>
@@ -172,7 +171,7 @@ onUnmounted(() => { window.removeEventListener('scroll', handleScroll) })
                   <span v-for="(tag, i) in hotKeywords" :key="tag" @click="quickSearch(tag)"
                     class="px-3 py-1.5 rounded-lg text-sm cursor-pointer transition border font-medium border-transparent"
                     :class="i < 3 ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'">{{
-                    tag }}</span>
+                      tag }}</span>
                 </div>
               </div>
             </div>
@@ -214,7 +213,7 @@ onUnmounted(() => { window.removeEventListener('scroll', handleScroll) })
       <div class="container mx-auto px-4 py-3 overflow-x-auto no-scrollbar flex items-center justify-center gap-3">
         <button v-for="cat in categories" :key="cat" @click="setCategory(cat)"
           :class="['flex-shrink-0 px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 border', currentCategory === cat ? 'bg-slate-800 text-white border-slate-800 shadow-lg shadow-slate-900/20 scale-105' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50']">{{
-          cat }}</button>
+            cat }}</button>
       </div>
     </div>
 
@@ -243,7 +242,7 @@ onUnmounted(() => { window.removeEventListener('scroll', handleScroll) })
               <div v-if="getBadge(product)"
                 :class="`absolute top-3 right-3 z-20 px-2.5 py-1 text-[10px] font-bold text-white rounded-lg shadow-sm ${getBadge(product).color}`"
                 style="transform: translateZ(20px)">{{ getBadge(product).text }}</div>
-              <img :src="product.imageUrl || defaultImage" loading="lazy"
+              <img :src="product.imageUrl || defaultImage"
                 class="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-105"
                 style="transform: translateZ(0px)" />
               <div

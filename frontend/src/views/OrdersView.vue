@@ -6,11 +6,9 @@ import Swal from 'sweetalert2'
 const orders = ref([])
 const loading = ref(true)
 
-// 加载订单列表
 const fetchOrders = async () => {
   loading.value = true
   try {
-    // 调用我们在 OrderController 新写的 GET 接口
     const res = await request.get('/api/orders')
     orders.value = res || []
   } catch (error) {
@@ -20,10 +18,8 @@ const fetchOrders = async () => {
   }
 }
 
-// 支付功能 (对应 B04 修复)
 const payOrder = async (order) => {
   try {
-    // 模拟支付过程
     await Swal.fire({
       title: '正在支付...',
       timer: 1000,
@@ -31,18 +27,15 @@ const payOrder = async (order) => {
       didOpen: () => Swal.showLoading()
     })
 
-    // 调用后端支付接口
     await request.post(`/api/orders/${order.id}/pay`)
-    
+
     await Swal.fire('支付成功', '订单状态已更新', 'success')
-    // 刷新列表
     fetchOrders()
   } catch (e) {
     console.error(e)
   }
 }
 
-// 确认收货
 const confirmReceive = async (order) => {
   try {
     const res = await Swal.fire({
@@ -52,7 +45,7 @@ const confirmReceive = async (order) => {
       showCancelButton: true,
       confirmButtonText: '确认收货'
     })
-    
+
     if (res.isConfirmed) {
       await request.post(`/api/products/order/${order.id}/receive`)
       await Swal.fire('已收货', '积分已到账', 'success')
@@ -63,7 +56,6 @@ const confirmReceive = async (order) => {
   }
 }
 
-// 申请售后 (简单弹窗，对应 B05 修复)
 const applyRefund = async (order) => {
   const { value: formValues } = await Swal.fire({
     title: '申请售后',
@@ -90,18 +82,15 @@ const applyRefund = async (order) => {
       Swal.fire('已提交', '售后申请正在审核中', 'success')
       fetchOrders()
     } catch (e) {
-      // 这里的报错会被全局异常拦截器捕获 (比如超过10天)
     }
   }
 }
 
-// 辅助函数：格式化时间
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
   return new Date(dateStr).toLocaleString()
 }
 
-// 辅助函数：状态颜色
 const getStatusColor = (status) => {
   switch (status) {
     case 'UNPAID': return 'bg-orange-100 text-orange-600'
@@ -138,14 +127,17 @@ onMounted(() => {
         加载中...
       </div>
 
-      <div v-else-if="orders.length === 0" class="text-center py-20 bg-white rounded-3xl shadow-sm border border-slate-100">
+      <div v-else-if="orders.length === 0"
+        class="text-center py-20 bg-white rounded-3xl shadow-sm border border-slate-100">
         <div class="text-5xl mb-4">📦</div>
         <p class="text-slate-500 mb-6">暂无订单</p>
-        <router-link to="/" class="px-6 py-2 bg-blue-600 text-white rounded-full font-bold text-sm hover:bg-blue-700 transition">去逛逛</router-link>
+        <router-link to="/"
+          class="px-6 py-2 bg-blue-600 text-white rounded-full font-bold text-sm hover:bg-blue-700 transition">去逛逛</router-link>
       </div>
 
       <div v-else class="space-y-6">
-        <div v-for="order in orders" :key="order.id" class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition">
+        <div v-for="order in orders" :key="order.id"
+          class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition">
           <div class="flex justify-between items-center mb-4 pb-4 border-b border-slate-50">
             <div class="text-sm text-slate-500">
               <span class="font-mono mr-2">#{{ order.id }}</span>
@@ -174,22 +166,19 @@ onMounted(() => {
               <span class="text-sm text-slate-500 mr-2">合计:</span>
               <span class="text-xl font-bold">¥{{ order.totalPrice }}</span>
             </div>
-            
+
             <div class="flex gap-3">
-              <button v-if="order.status === 'UNPAID'" 
-                @click="payOrder(order)"
+              <button v-if="order.status === 'UNPAID'" @click="payOrder(order)"
                 class="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition active:scale-95">
                 立即支付
               </button>
 
-              <button v-if="order.status === 'SHIPPED'" 
-                @click="confirmReceive(order)"
+              <button v-if="order.status === 'SHIPPED'" @click="confirmReceive(order)"
                 class="px-5 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition active:scale-95">
                 确认收货
               </button>
 
-              <button v-if="['已送达', 'DELIVERED'].includes(order.status)" 
-                @click="applyRefund(order)"
+              <button v-if="['已送达', 'DELIVERED'].includes(order.status)" @click="applyRefund(order)"
                 class="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl text-sm font-bold border border-slate-200 transition">
                 申请售后
               </button>

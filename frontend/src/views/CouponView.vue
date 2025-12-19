@@ -9,32 +9,25 @@ const router = useRouter()
 const activeTab = ref('available')
 const allCoupons = ref([])
 
-// 计算属性基于本地 state (allCoupons)，而不是 store，减少对 store 的直接依赖
 const availableCoupons = computed(() => allCoupons.value.filter(c => c.status === 'UNUSED' && new Date(c.expiryDate || '2999-01-01') > new Date()).sort((a, b) => b.amount - a.amount))
 const usedCoupons = computed(() => allCoupons.value.filter(c => c.status === 'USED' || new Date(c.expiryDate || '2999-01-01') <= new Date()).sort((a, b) => new Date(b.receiveTime) - new Date(a.receiveTime)))
 
-// === ✅ 核心修复：拉取优惠券并覆盖 store.myCoupons ===
 const fetchCoupons = async () => {
     try {
         const username = store.currentUser?.username
         if (!username) { return }
 
-        // 1. 调用 API 获取最新列表
         const res = await request.get(`/api/coupons/my?username=${username}`)
 
         if (res && Array.isArray(res)) {
-            // 2. 使用 API 数据完全覆盖本地状态和 store 内存
             allCoupons.value = res
-            store.myCoupons = res // 同步到 store 内存，供 ProfileView 等组件的 couponCount 使用
-
-            // 3. 解决重复券显示问题：前端直接根据服务器数据进行过滤和显示
-            //    (由于计算属性已定义，这里无需手动设置 availableCoupons/usedCoupons)
+            store.myCoupons = res
         }
     } catch (e) {
         console.error("Error fetching coupons:", e)
         Swal.fire('加载失败', '无法获取优惠券列表，请检查网络', 'error')
         allCoupons.value = []
-        store.myCoupons = [] // 清除 store 内存
+        store.myCoupons = []
     }
 }
 
@@ -55,13 +48,12 @@ const getTagColor = (tag) => {
 const getStatusColor = (status) => {
     if (status === 'UNUSED') return 'bg-green-600'
     if (status === 'USED') return 'bg-slate-400'
-    return 'bg-red-500' // Expired
+    return 'bg-red-500'
 }
 
 const useCoupon = (coupon) => {
     if (coupon.status !== 'UNUSED') return
     store.showNotification(`已选中优惠券: ${coupon.couponName}，可在结算页使用`, 'success')
-    // 仅跳转到购物车页面，由用户自行决定是否下单
     router.push('/cart')
 }
 </script>
@@ -195,7 +187,6 @@ const useCoupon = (coupon) => {
     width: 20px;
     height: 20px;
     background-color: #f8fafc;
-    /* 与背景色匹配 */
     border-radius: 50%;
     transform: translateY(-50%);
     z-index: 10;
@@ -209,7 +200,6 @@ const useCoupon = (coupon) => {
     width: 20px;
     height: 20px;
     background-color: #f8fafc;
-    /* 与背景色匹配 */
     border-radius: 50%;
     transform: translateY(-50%);
     z-index: 10;

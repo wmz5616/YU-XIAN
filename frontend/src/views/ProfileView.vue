@@ -36,7 +36,7 @@ const userLocation = computed(() => {
     if (addr.detail) {
       const cityMatch = addr.detail.match(/省(.*?市)/)
       if (cityMatch && cityMatch[1]) return cityMatch[1]
-      
+
       const directCity = addr.detail.match(/(.*?市)/)
       if (directCity && directCity[1]) return directCity[1]
 
@@ -46,7 +46,6 @@ const userLocation = computed(() => {
   return '未设置地址'
 })
 
-// === 新增：拉取优惠券逻辑 ===
 const fetchCoupons = async () => {
   try {
     const username = store.currentUser?.username;
@@ -54,7 +53,6 @@ const fetchCoupons = async () => {
 
     const res = await request.get(`/api/coupons/my?username=${username}`);
     if (res && Array.isArray(res)) {
-      // 关键：将远程数据同步到 store.myCoupons
       store.myCoupons = res;
     }
   } catch (e) {
@@ -62,16 +60,14 @@ const fetchCoupons = async () => {
     store.myCoupons = [];
   }
 };
-// ========================================================
 
 onMounted(async () => {
   if (!store.currentUser) { router.push('/login'); return }
   try {
     const username = store.currentUser.username
-    // 关键修复：在拉取订单数据时，并行拉取优惠券数据
     const [ordersData] = await Promise.all([
       request(`/api/products/orders?username=${username}`),
-      fetchCoupons() // 调用拉取优惠券
+      fetchCoupons()
     ])
 
     if (ordersData) orders.value = ordersData
@@ -80,7 +76,6 @@ onMounted(async () => {
 })
 
 const filteredOrders = computed(() => {
-  // ... (保持不变)
   let result = orders.value
 
   if (activeTab.value === 'orders') {
@@ -91,7 +86,6 @@ const filteredOrders = computed(() => {
     const q = searchQuery.value.toLowerCase()
     result = result.filter(o => (20250000 + o.id).toString().includes(q) || o.productNames.toLowerCase().includes(q))
   }
-  // 2. 排序：新订单在前
   return result.sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
 })
 
@@ -120,7 +114,6 @@ const openRefundModal = (order) => {
 }
 
 const submitRefund = async () => {
-  // ... (保持不变)
   if (!refundForm.value.reason) return Swal.fire('请填写申请原因', '', 'warning')
 
   if (!store.currentUser || !store.currentUser.username) {
@@ -128,11 +121,10 @@ const submitRefund = async () => {
   }
 
   try {
-    // ✅ 关键修复：在请求体中添加 username
     const payload = {
       reason: refundForm.value.reason,
       type: refundForm.value.type,
-      username: store.currentUser.username // <<< 修复点：添加当前操作人
+      username: store.currentUser.username
     };
 
     await request.post(`/api/orders/${refundForm.value.orderId}/refund`, payload)
@@ -155,9 +147,7 @@ const submitRefund = async () => {
   }
 }
 
-// 确认收货逻辑
 const confirmReceipt = async (order) => {
-  // ... (保持不变)
   const result = await Swal.fire({
     title: '<span class="text-xl font-bold text-slate-800">确认已收到货品？</span>',
     html: `
@@ -272,55 +262,48 @@ const saveAddress = async () => { if (!newAddress.value.contact) return; const a
 const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); }
 
 const locateUser = () => {
-  // 1. 检查地图组件
   if (typeof AMap === 'undefined') {
     Swal.fire('错误', '地图组件未加载，请刷新页面重试', 'error')
     return
   }
 
-  // 2. 状态重置
   isLocating.value = true
-  if (newAddress.value) newAddress.value.detail = '' // 清空旧地址
+  if (newAddress.value) newAddress.value.detail = ''
 
-  // 3. 同时加载 Geolocation (定位) 和 Geocoder (逆地理编码)
   AMap.plugin(['AMap.Geolocation', 'AMap.Geocoder'], function () {
-    
-    // A. 创建定位对象
+
     const geolocation = new AMap.Geolocation({
       enableHighAccuracy: true,
       timeout: 10000,
       zoomToAccuracy: true
     })
 
-    // B. 开始定位
     geolocation.getCurrentPosition(function (status, result) {
       if (status === 'complete') {
         console.log('Profile定位成功(经纬度):', result.position)
 
-        // C. 定位成功后，手动调用逆地理编码
         const geocoder = new AMap.Geocoder({
           radius: 1000,
           extensions: 'all'
         })
 
-        geocoder.getAddress(result.position, function(status, data) {
-          isLocating.value = false // 结束 Loading
+        geocoder.getAddress(result.position, function (status, data) {
+          isLocating.value = false
 
           if (status === 'complete' && data.regeocode) {
-            // ✅✅✅ 成功拿到地址文字！
             const addr = data.regeocode.formattedAddress
             console.log('逆地理编码结果:', addr)
-            
-            newAddress.value.detail = addr // 赋值
-            
-            Swal.fire({ 
-              toast: true, 
-              position: 'top', 
-              icon: 'success', 
-              title: '定位成功', 
+
+            newAddress.value.detail = addr
+
+            Swal.fire({
+              toast: true,
+              position: 'top',
+              icon: 'success',
+              title: '定位成功',
               text: addr,
-              timer: 3000, 
-              showConfirmButton: false 
+              timer: 3000,
+              showConfirmButton: false
             })
           } else {
             console.error('逆地理编码失败:', data)
@@ -330,7 +313,6 @@ const locateUser = () => {
         })
 
       } else {
-        // 定位失败
         isLocating.value = false
         console.error("定位失败:", result.message)
         Swal.fire('定位失败', '请检查网络或GPS设置', 'error')
@@ -341,7 +323,6 @@ const locateUser = () => {
 
 const formatDate = (iso) => new Date(iso).toLocaleDateString()
 
-// UI 辅助
 const getProgressWidth = (status) => {
   if (['待发货', 'PAID'].includes(status)) return '15%'
   if (['运输中', 'SHIPPED'].includes(status)) return '60%'

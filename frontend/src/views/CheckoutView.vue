@@ -96,12 +96,10 @@ const locateUser = () => {
     return
   }
 
-  // 1. 开始 Loading
   newAddress.detail = ''
   isLocating.value = true
 
   AMap.plugin(['AMap.Geolocation', 'AMap.Geocoder'], function () {
-    // A. 先定位 (获取经纬度)
     const geolocation = new AMap.Geolocation({
       enableHighAccuracy: true,
       timeout: 10000,
@@ -110,26 +108,22 @@ const locateUser = () => {
 
     geolocation.getCurrentPosition(function (status, result) {
       if (status === 'complete') {
-        // ✅ 定位成功，拿到了 result.position (经纬度)
         console.log('经纬度获取成功:', result.position)
-        
-        // B. 手动执行逆地理编码 (强行转文字)
+
         const geocoder = new AMap.Geocoder({
           radius: 1000,
           extensions: 'all'
         })
 
-        geocoder.getAddress(result.position, function(status, data) {
-          isLocating.value = false // 结束 Loading
-          
+        geocoder.getAddress(result.position, function (status, data) {
+          isLocating.value = false
+
           if (status === 'complete' && data.regeocode) {
-            // ✅✅✅ 终于拿到了详细地址！
             console.log('逆地理编码成功:', data.regeocode.formattedAddress)
             newAddress.detail = data.regeocode.formattedAddress
             store.showNotification('定位成功')
           } else {
             console.error('逆地理编码失败:', status, data)
-            // 兜底：如果转文字失败，至少填个经纬度证明定位是准的
             newAddress.detail = `(已定位到经纬度: ${result.position}, 但地址解析超时)`
             store.showNotification('地址解析失败，请手动补充', 'warning')
           }
@@ -204,7 +198,7 @@ const submitOrder = async () => {
 
   try {
     const res = await request.post('/api/orders', payload)
-    const orderId = res.orderId 
+    const orderId = res.orderId
 
     let timerInterval
     await Swal.fire({
@@ -227,23 +221,23 @@ const submitOrder = async () => {
     await request.post(`/api/orders/${orderId}/pay`)
 
     if (typeof store.clearCart === 'function') {
-        store.clearCart() 
+      store.clearCart()
     } else {
-        store.cart = []
+      store.cart = []
     }
-    
+
     await Swal.fire({
       icon: 'success',
       title: '支付成功！',
       text: '商家正在加急备货中，请留意发货通知',
       confirmButtonText: '查看订单'
     })
-    
+
     router.push('/orders')
 
   } catch (error) {
     console.error(error)
-  }finally {
+  } finally {
     loading.value = false
   }
 }

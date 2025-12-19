@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { store } from '../store.js' // 确保路径正确
+import { store } from '../store.js'
 import { request } from '@/utils/request'
 import QuickViewModal from '../components/QuickViewModal.vue'
 
@@ -10,16 +10,12 @@ const recommendations = ref([])
 const showModal = ref(false)
 const selectedProduct = ref(null)
 
-// ✅ 1. 勾选逻辑状态
-// 默认全选：存储被选中的商品 ID
 const selectedIds = ref(new Set())
 
-// 初始化时全选
 const initSelection = () => {
   store.cart.forEach(item => selectedIds.value.add(item.id))
 }
 
-// 切换单个选中状态
 const toggleSelection = (id) => {
   if (selectedIds.value.has(id)) {
     selectedIds.value.delete(id)
@@ -28,7 +24,6 @@ const toggleSelection = (id) => {
   }
 }
 
-// 全选/取消全选
 const toggleAll = () => {
   if (selectedIds.value.size === store.cart.length) {
     selectedIds.value.clear()
@@ -41,7 +36,6 @@ const isAllSelected = computed(() => {
   return store.cart.length > 0 && selectedIds.value.size === store.cart.length
 })
 
-// ✅ 2. 价格计算逻辑 (只算选中的)
 const selectedItems = computed(() => {
   return store.cart.filter(item => selectedIds.value.has(item.id))
 })
@@ -51,7 +45,7 @@ const itemsTotal = computed(() => {
 })
 
 const shippingFee = computed(() => {
-  // 满 200 免运费
+
   return itemsTotal.value >= 200 ? 0 : 20
 })
 
@@ -59,7 +53,6 @@ const finalTotal = computed(() => {
   return itemsTotal.value + shippingFee.value
 })
 
-// ✅ 3. 免运费进度条逻辑
 const FREE_SHIPPING_THRESHOLD = 200
 const progressPercentage = computed(() => {
   const percent = (itemsTotal.value / FREE_SHIPPING_THRESHOLD) * 100
@@ -70,7 +63,6 @@ const diffForFreeShipping = computed(() => {
   return Math.max(0, FREE_SHIPPING_THRESHOLD - itemsTotal.value).toFixed(2)
 })
 
-// 基础操作
 const updateQuantity = (item, change) => {
   const newQty = item.quantity + change
   if (newQty > 0) {
@@ -80,31 +72,25 @@ const updateQuantity = (item, change) => {
 
 const removeItem = (id) => {
   store.removeFromCart(id)
-  selectedIds.value.delete(id) // 移除后同时也从选中集合去掉
+  selectedIds.value.delete(id)
 }
 
-// ✅ 修改后的结算函数
 const checkout = () => {
   if (selectedItems.value.length === 0) {
-    // 使用漂亮的全局通知，而不是丑陋的原生 alert
     store.showNotification('请至少选择一件商品', 'warning')
     return
   }
-  
-  // 🚀 核心修复：移除 alert 弹窗，直接跳转到结算页
-  // 请确保您的 router/index.js 里配置了 path: '/checkout' 的路由
+
   router.push('/checkout')
 }
 
-// 获取推荐商品
 const fetchRecommendations = async () => {
   try {
     const data = await request('/api/products/recommend')
-    recommendations.value = data.slice(0, 4) // 只取4个
+    recommendations.value = data.slice(0, 4)
   } catch (e) { console.error(e) }
 }
 
-// 商品详情跳转
 const goToDetail = (id) => router.push(`/product/${id}`)
 const addToCart = (p, e) => { e.stopPropagation(); store.addToCart(p, e) }
 
@@ -256,7 +242,7 @@ onMounted(() => {
               </div>
               <div v-else class="mb-3">
                 <div class="text-sm text-blue-100 mb-1">再买 <span class="font-bold text-white text-lg">¥{{
-                    diffForFreeShipping }}</span> 免运费</div>
+                  diffForFreeShipping }}</span> 免运费</div>
                 <div class="text-xs text-blue-200 opacity-80">去凑单更划算 ></div>
               </div>
 

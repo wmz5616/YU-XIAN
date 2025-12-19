@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  // ✅ 核心修改：开启 class 模式
   darkMode: 'class', 
   content: [
     "./index.html",

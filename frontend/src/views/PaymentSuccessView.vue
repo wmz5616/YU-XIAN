@@ -16,8 +16,9 @@ const payInfo = computed(() => {
 
 <template>
   <div class="min-h-[80vh] flex flex-col items-center justify-center text-center px-4">
-    
-    <div class="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-bounce-slow shadow-lg shadow-green-100">
+
+    <div
+      class="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-bounce-slow shadow-lg shadow-green-100">
       <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
       </svg>
@@ -26,9 +27,10 @@ const payInfo = computed(() => {
     <h1 class="text-3xl font-serif-sc font-bold text-slate-900 mb-2">支付成功</h1>
     <p class="text-slate-500 mb-10">感谢您的购买，仓库正在打印发货单...</p>
 
-    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50 w-full max-w-sm mb-10 relative overflow-hidden">
+    <div
+      class="bg-white p-8 rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50 w-full max-w-sm mb-10 relative overflow-hidden">
       <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
-      
+
       <div class="space-y-5 text-sm">
         <div class="flex justify-between items-center text-slate-600">
           <span>收款方</span>
@@ -36,7 +38,7 @@ const payInfo = computed(() => {
             <img src="/icons/logo.png" class="w-4 h-4 opacity-80"> 渔鲜直供自营店
           </span>
         </div>
-        
+
         <div class="flex justify-between items-center text-slate-600">
           <span>支付方式</span>
           <div class="flex items-center gap-2 font-bold text-slate-800">
@@ -59,16 +61,12 @@ const payInfo = computed(() => {
     </div>
 
     <div class="flex gap-4">
-      <button 
-        @click="router.push('/profile')" 
-        class="px-8 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:border-slate-400 hover:text-slate-800 transition"
-      >
+      <button @click="router.push('/profile')"
+        class="px-8 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:border-slate-400 hover:text-slate-800 transition">
         查看订单
       </button>
-      <button 
-        @click="router.push('/')" 
-        class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-blue-900 transition shadow-lg shadow-slate-900/20"
-      >
+      <button @click="router.push('/')"
+        class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-blue-900 transition shadow-lg shadow-slate-900/20">
         继续逛逛
       </button>
     </div>

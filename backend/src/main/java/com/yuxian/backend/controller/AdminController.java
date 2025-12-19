@@ -66,7 +66,6 @@ public class AdminController {
         return response;
     }
 
-    // 3. 仪表盘统计接口
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getDashboardStats() {
         Map<String, Object> stats = new HashMap<>();
@@ -75,24 +74,19 @@ public class AdminController {
         long totalProducts = productRepository.count();
         long totalOrders = orderRepository.count();
 
-        // ✅ 改动：sumTotalSales() 现在返回 BigDecimal
         BigDecimal totalSalesDecimal = orderRepository.sumTotalSales();
-        // 如果数据库没数据可能返回 null，转 double 时注意
+
         double totalSales = (totalSalesDecimal != null) ? totalSalesDecimal.doubleValue() : 0.0;
 
-        // 3. 计算近7天的销售趋势
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd");
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
 
         List<OrderRecord> recentOrders = orderRepository.findByCreateTimeAfter(sevenDaysAgo);
 
-        // ✅ 改动：适配 BigDecimal 的流式求和
-        // 我们将 BigDecimal 转为 double 进行求和，方便生成图表数据
         Map<String, Double> salesTrend = recentOrders.stream()
                 .filter(o -> o.getTotalPrice() != null)
                 .collect(Collectors.groupingBy(
                         o -> o.getCreateTime().format(formatter),
-                        // 将 BigDecimal 转 double 再求和
                         Collectors.summingDouble(o -> o.getTotalPrice().doubleValue())));
 
         List<String> dateList = new ArrayList<>();
@@ -113,7 +107,6 @@ public class AdminController {
         return ResponseEntity.ok(stats);
     }
 
-    // 4. 修改订单状态 (发货)
     @PutMapping("/orders/{id}/status")
     public ResponseEntity<?> updateOrderStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         Optional<OrderRecord> orderOpt = orderRepository.findById(id);
@@ -130,7 +123,6 @@ public class AdminController {
         return ResponseEntity.badRequest().body("Order not found or status missing");
     }
 
-    // 5. 删除用户
     @DeleteMapping("/users/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable Long id) {
         userRepository.deleteById(id);

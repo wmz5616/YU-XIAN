@@ -69,9 +69,9 @@ const initWebSocket = () => {
     const token = localStorage.getItem('token') || '';
 
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    
+
     const wsUrl = `${protocol}localhost:8080/ws/orders?token=${token}`;
-    
+
     socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
@@ -81,13 +81,13 @@ const initWebSocket = () => {
     socket.onmessage = (msg) => {
         if (msg.data === 'NEW_ORDER') {
             Toast.fire({ icon: 'info', title: '🔔 收到新订单！', text: '列表已自动刷新' });
-            if (currentTab.value === 'dashboard' || currentTab.value === 'orders') { 
-                fetchStats(); 
-                fetchOrders(false); 
+            if (currentTab.value === 'dashboard' || currentTab.value === 'orders') {
+                fetchStats();
+                fetchOrders(false);
             }
         }
     };
-    
+
     socket.onerror = () => {
         console.log("WebSocket连接失败 (可能是Token失效或网络问题)");
     };
@@ -334,7 +334,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                             <span class="text-blue-500">{{ currentPageTitle }}</span>
                         </div>
                         <h1 class="text-xl font-bold text-slate-800 dark:text-white tracking-tight">{{ currentPageTitle
-                            }}</h1>
+                        }}</h1>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -346,7 +346,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                     <div class="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-700">
                         <div class="text-right hidden sm:block">
                             <div class="text-sm font-bold text-slate-700 dark:text-slate-200">{{ currentUser.displayName
-                            }}</div>
+                                }}</div>
                             <div class="text-[10px] text-slate-400 uppercase">Administrator</div>
                         </div>
                         <div
@@ -431,7 +431,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                                     <td class="p-4 font-bold">{{ order.username }}</td>
                                     <td class="p-4">¥{{ order.totalPrice.toFixed(2) }}</td>
                                     <td class="p-4"><span :class="getStatusClass(order.status)">{{
-                                            formatStatus(order.status) }}</span></td>
+                                        formatStatus(order.status) }}</span></td>
                                     <td class="p-4 text-center">
                                         <button @click="openDetailModal(order)"
                                             class="text-blue-600 hover:underline mr-3">详情</button>
@@ -495,7 +495,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                     <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                         <h2 class="font-bold text-slate-800 dark:text-white">售后申请列表</h2>
                         <span class="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">待处理: {{
-                            refundList.filter(r => r.status === 'PENDING').length }}</span>
+                            refundList.filter(r => r.status === 'PENDING').length}}</span>
                     </div>
                     <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
                         <thead class="bg-slate-50 dark:bg-slate-800/50 font-bold text-slate-500">

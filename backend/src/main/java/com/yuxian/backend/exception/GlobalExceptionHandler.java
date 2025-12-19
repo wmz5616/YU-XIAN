@@ -39,19 +39,19 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(org.springframework.transaction.TransactionSystemException.class)
-    public ResponseEntity<Map<String, Object>> handleTxException(org.springframework.transaction.TransactionSystemException e) {
-        // 尝试获取最底层的异常原因
+    public ResponseEntity<Map<String, Object>> handleTxException(
+            org.springframework.transaction.TransactionSystemException e) {
+
         Throwable rootCause = e.getRootCause();
         String message = (rootCause != null) ? rootCause.getMessage() : e.getMessage();
 
-        // 打印到控制台方便开发查看
         e.printStackTrace();
 
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("success", false);
         body.put("status", 400);
-        // 如果是乐观锁异常，提示得更友好一点
+
         if (message != null && message.contains("Row was updated or deleted by another transaction")) {
             body.put("message", "数据版本冲突，请刷新后重试");
         } else {

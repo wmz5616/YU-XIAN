@@ -2,17 +2,15 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '../store.js'
-import { request } from '@/utils/request' // ✅ 引入 request
+import { request } from '@/utils/request'
 import Swal from 'sweetalert2'
 
 const router = useRouter()
 const loading = ref(false)
 const isSigned = ref(false)
 
-// 模拟积分明细数据 (如果需要持久化，也需要后端提供接口，这里暂时保持模拟或从Store读)
 const pointLogs = ref(store.pointLogs || [])
 
-// 可兑换列表
 const exchangeableCoupons = ref([
     { id: 101, amount: 5, cost: 500, name: '无门槛立减券', color: 'from-orange-400 to-red-500' },
     { id: 102, amount: 20, cost: 1800, name: '满200可用', color: 'from-blue-400 to-indigo-500' },
@@ -21,13 +19,11 @@ const exchangeableCoupons = ref([
 ])
 
 onMounted(() => {
-    // 检查签到状态
     const today = new Date().toLocaleDateString()
     const lastSign = localStorage.getItem(`sign_date_${store.currentUser?.username}`)
     if (lastSign === today) isSigned.value = true
 })
 
-// 兑换逻辑
 const handleExchange = async (item) => {
     if (!store.currentUser) {
         Swal.fire('请先登录', '', 'warning');
@@ -53,7 +49,6 @@ const handleExchange = async (item) => {
     if (confirm.isConfirmed) {
         loading.value = true;
         try {
-            // ✅ 核心修复：调用后端 API 进行兑换
             const res = await request.post('/api/coupons/exchange', {
                 username: store.currentUser.username,
                 amount: item.amount,
@@ -62,20 +57,13 @@ const handleExchange = async (item) => {
             });
 
             if (res && res.success) {
-                // 1. 更新本地 Store 的积分 (后端返回了最新积分)
                 store.currentUser.points = res.points;
-                // 触发保存到 LocalStorage
                 store.login(store.currentUser);
-
-                // 2. 记录本地日志 (可选，后端如果没做日志接口，前端先记着)
                 store.addPointLog({
                     type: 'expense',
                     title: `兑换: ${item.name}`,
                     amount: item.cost
                 });
-
-                // 3. 将新券加入本地缓存，防止不刷新页面看不到
-                // 注意：这里只是为了立即显示，实际上数据已经进数据库了
                 store.addCoupon({
                     name: item.name,
                     amount: item.amount
@@ -91,17 +79,15 @@ const handleExchange = async (item) => {
     }
 }
 
-// 签到逻辑 (暂时保持简单版，如果需要持久化也需要后端支持)
 const handleSignIn = () => {
     if (!store.currentUser) return router.push('/login');
 
     isSigned.value = true;
     localStorage.setItem(`sign_date_${store.currentUser.username}`, new Date().toLocaleDateString());
 
-    // 增加积分 (建议后续也改为后端接口)
     const reward = 10;
     store.currentUser.points = (store.currentUser.points || 0) + reward;
-    store.login(store.currentUser); // 保存
+    store.login(store.currentUser);
 
     store.addPointLog({ type: 'income', title: '每日签到', amount: reward });
     Swal.fire('签到成功', `获得 ${reward} 积分`, 'success');

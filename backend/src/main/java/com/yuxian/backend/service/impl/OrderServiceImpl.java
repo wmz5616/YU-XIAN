@@ -48,7 +48,6 @@ public class OrderServiceImpl implements OrderService {
         order.setUsername(username);
         order.setCreateTime(LocalDateTime.now());
 
-        // ✅ 修复 B04：初始状态设为 "UNPAID" (待支付)，不再是直接 PAID
         order.setStatus("UNPAID");
 
         order.setReceiverName(addressSnapshot.getContact());
@@ -66,7 +65,6 @@ public class OrderServiceImpl implements OrderService {
             Product product = productRepository.findById(pid)
                     .orElseThrow(() -> new RuntimeException("商品不存在: " + pid));
 
-            // 下单即扣库存 (保留库存预占逻辑)
             int rows = productRepository.decreaseStock(pid, quantity);
             if (rows == 0) {
                 throw new RuntimeException("商品 [" + product.getName() + "] 库存不足！");
@@ -95,7 +93,6 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal subtotal = total;
 
-        // 优惠券逻辑
         if (couponId != null) {
             UserCoupon userCoupon = userCouponRepository.findById(couponId)
                     .orElseThrow(() -> new RuntimeException("优惠券不存在"));
@@ -120,7 +117,6 @@ public class OrderServiceImpl implements OrderService {
             userCouponRepository.save(userCoupon);
         }
 
-        // 运费逻辑
         if (subtotal.compareTo(new BigDecimal("200.0")) <= 0) {
             total = total.add(new BigDecimal("20.0"));
         }
@@ -134,28 +130,23 @@ public class OrderServiceImpl implements OrderService {
         return order.getId();
     }
 
-    // ✅ 新增：支付订单方法 (修复 B04)
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void payOrder(Long orderId, String username) {
         OrderRecord order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
-        // 安全校验：只能支付自己的订单
         if (!order.getUsername().equals(username)) {
             throw new RuntimeException("无权操作此订单");
         }
 
-        // 状态机校验
         if (!"UNPAID".equals(order.getStatus())) {
             throw new RuntimeException("订单状态异常，无法支付");
         }
 
-        // 模拟支付成功
-        order.setStatus("PAID"); // 标记为已支付/待发货
+        order.setStatus("PAID");
         orderRepository.save(order);
 
-        // 支付成功后，通知管理员有新订单
         try {
             WebSocketServer.sendInfo("NEW_ORDER");
         } catch (Exception e) {

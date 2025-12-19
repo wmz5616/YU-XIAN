@@ -6,18 +6,14 @@ import Swal from 'sweetalert2'
 const refunds = ref([])
 const loading = ref(false)
 
-// ✅ 修复 1: 从 localStorage 获取管理员用户名
 const adminUser = JSON.parse(localStorage.getItem('yuxian_user') || '{}');
 const adminUsername = adminUser.username || 'SystemAdmin';
-// ===========================================
 
 const fetchRefunds = async () => {
     loading.value = true
     try {
-        // 调用后端接口获取待处理的售后申请
         const res = await request.get('/api/orders/admin/refunds')
 
-        // 这里的处理确保了数据的响应式更新
         refunds.value = res || []
     } catch (e) {
         console.error("加载售后列表失败:", e)
@@ -26,7 +22,6 @@ const fetchRefunds = async () => {
     }
 }
 
-// 同意退款
 const approve = async (order) => {
     const result = await Swal.fire({
         title: '同意退款?',
@@ -40,7 +35,6 @@ const approve = async (order) => {
 
     if (result.isConfirmed) {
         try {
-            // ✅ 修复 2: 修正 API 路径并传递 adminUsername
             await request.post(`/api/orders/admin/refunds/${order.id}/audit`, {
                 pass: true,
                 reason: '审核通过，已同意退款。',
@@ -48,16 +42,14 @@ const approve = async (order) => {
             });
 
             Swal.fire('已处理', '订单已变更为退款成功', 'success')
-            await fetchRefunds() // ✅ 核心：操作成功后重新拉取数据库最新状态
+            await fetchRefunds()
         } catch (e) {
             Swal.fire('处理失败', e.message || '系统繁忙', 'error')
         }
     }
 }
 
-// 驳回退款
 const reject = async (order) => {
-    // 使用 Swal 强制要求输入驳回理由
     const { value: reason } = await Swal.fire({
         title: '驳回退款申请',
         input: 'textarea',
@@ -74,7 +66,6 @@ const reject = async (order) => {
 
     if (reason) {
         try {
-            // ✅ 修复 3: 修正 API 路径并传递驳回理由与操作人
             await request.post(`/api/orders/admin/refunds/${order.id}/audit`, {
                 pass: false,
                 reason: reason,
@@ -82,7 +73,7 @@ const reject = async (order) => {
             });
 
             Swal.fire('已驳回', `订单已恢复为“已送达”，原因：${reason}`, 'success')
-            await fetchRefunds() // ✅ 核心：同步数据库状态
+            await fetchRefunds()
         } catch (e) {
             Swal.fire('处理失败', e.message || '系统繁忙', 'error')
         }
@@ -192,7 +183,6 @@ const formatDate = (iso) => new Date(iso).toLocaleString()
 </template>
 
 <style scoped>
-/* ✅ 补全的样式代码 */
 .animate-fade-in {
     animation: fadeIn 0.5s ease-out forwards;
 }
@@ -209,7 +199,6 @@ const formatDate = (iso) => new Date(iso).toLocaleString()
     }
 }
 
-/* 隐藏滚动条样式 */
 .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
 }
@@ -219,12 +208,10 @@ const formatDate = (iso) => new Date(iso).toLocaleString()
     border-radius: 10px;
 }
 
-/* 适配中文字体库 */
 .font-serif-sc {
     font-family: 'Noto Serif SC', serif;
 }
 
-/* 针对多行文本截断的 fallback */
 .line-clamp-1 {
     display: -webkit-box;
     -webkit-line-clamp: 1;

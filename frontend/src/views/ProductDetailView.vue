@@ -143,18 +143,18 @@ const initChart = () => {
 const changeCount = (delta) => {
   if (!product.value) return
   const newVal = buyCount.value + delta
-  
+
   if (newVal > product.value.stock) {
     store.showNotification(`手慢了！仅剩 ${product.value.stock} 件`, 'warning')
     buyCount.value = product.value.stock
     return
   }
-  
+
   if (newVal < 1) {
     buyCount.value = 1
     return
   }
-  
+
   buyCount.value = newVal
 }
 const addToCart = async (event) => {
@@ -162,7 +162,7 @@ const addToCart = async (event) => {
   const inCartCount = store.getProductCount(product.value.id)
 
   const totalDemand = inCartCount + buyCount.value
-  
+
   if (totalDemand > product.value.stock) {
     const canBuy = product.value.stock - inCartCount
     if (canBuy > 0) {
@@ -176,14 +176,14 @@ const addToCart = async (event) => {
 
   isAdding.value = true
   await new Promise(r => setTimeout(r, 600))
-  
+
   for (let i = 0; i < buyCount.value; i++) {
     store.addToCart(product.value, i === 0 ? event : null)
   }
-  
+
   isAdding.value = false
   if (!event) store.showNotification(`成功加购 ${buyCount.value} 件`)
-  
+
   buyCount.value = 1
 }
 
@@ -324,7 +324,7 @@ watch(() => route.params.id, () => { window.location.reload() })
               class="absolute top-5 left-5 z-10 bg-white/90 backdrop-blur px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex flex-col">
               <span class="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Trace ID</span>
               <span class="font-mono text-xs font-bold text-slate-700">{{ insightData.blockchainHash.substring(0, 18)
-                }}...</span>
+              }}...</span>
             </div>
             <div id="traceMap" class="w-full h-full"></div>
           </div>
@@ -339,17 +339,17 @@ watch(() => route.params.id, () => { window.location.reload() })
                 <div class="flex justify-between items-center border-b border-white/10 pb-3">
                   <span class="text-sm text-slate-300">海水温度</span>
                   <span class="font-mono text-xl font-bold text-blue-200">{{ insightData.environment?.waterTemp
-                    }}°C</span>
+                  }}°C</span>
                 </div>
                 <div class="flex justify-between items-center border-b border-white/10 pb-3">
                   <span class="text-sm text-slate-300">海水盐度</span>
                   <span class="font-mono text-xl font-bold text-teal-200">{{ insightData.environment?.salinity
-                    }}%</span>
+                  }}%</span>
                 </div>
                 <div class="flex justify-between items-center">
                   <span class="text-sm text-slate-300">作业风力</span>
                   <span class="font-mono text-xl font-bold text-orange-200">{{ insightData.environment?.windSpeed
-                    }}级</span>
+                  }}级</span>
                 </div>
               </div>
             </div>
