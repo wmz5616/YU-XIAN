@@ -16,7 +16,7 @@ const activeTab = ref('orders')
 const searchQuery = ref('')
 
 const currentPage = ref(1)
-const pageSize = 5
+const pageSize = 3
 const couponCount = computed(() => {
   const now = new Date();
   return store.myCoupons.filter(c =>
@@ -29,17 +29,13 @@ const couponCount = computed(() => {
 })
 
 const userLocation = computed(() => {
-
   if (store.currentUser?.addresses?.length > 0) {
     const addr = store.currentUser.addresses.find(a => a.isDefault) || store.currentUser.addresses[0]
-
     if (addr.detail) {
       const cityMatch = addr.detail.match(/省(.*?市)/)
       if (cityMatch && cityMatch[1]) return cityMatch[1]
-
       const directCity = addr.detail.match(/(.*?市)/)
       if (directCity && directCity[1]) return directCity[1]
-
       return addr.detail.substring(0, 4)
     }
   }
@@ -50,7 +46,6 @@ const fetchCoupons = async () => {
   try {
     const username = store.currentUser?.username;
     if (!username) return;
-
     const res = await request.get(`/api/coupons/my?username=${username}`);
     if (res && Array.isArray(res)) {
       store.myCoupons = res;
@@ -69,19 +64,15 @@ onMounted(async () => {
       request(`/api/products/orders?username=${username}`),
       fetchCoupons()
     ])
-
     if (ordersData) orders.value = ordersData
-
   } catch (error) { console.error(error) }
 })
 
 const filteredOrders = computed(() => {
   let result = orders.value
-
   if (activeTab.value === 'orders') {
     result = result.filter(o => !['售后处理中', '退款成功', '已退货'].includes(o.status))
   }
-
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
     result = result.filter(o => (20250000 + o.id).toString().includes(q) || o.productNames.toLowerCase().includes(q))
@@ -115,33 +106,26 @@ const openRefundModal = (order) => {
 
 const submitRefund = async () => {
   if (!refundForm.value.reason) return Swal.fire('请填写申请原因', '', 'warning')
-
   if (!store.currentUser || !store.currentUser.username) {
     return Swal.fire('错误', '用户未登录，无法提交申请', 'error')
   }
-
   try {
     const payload = {
       reason: refundForm.value.reason,
       type: refundForm.value.type,
       username: store.currentUser.username
     };
-
     await request.post(`/api/orders/${refundForm.value.orderId}/refund`, payload)
-
     const order = orders.value.find(o => o.id === refundForm.value.orderId)
     if (order) order.status = '售后处理中'
-
     showRefundModal.value = false
-
     Swal.fire({
       title: '申请已提交',
       text: '商家将在 24 小时内审核您的请求',
       icon: 'success',
-      confirmButtonColor: '#6366f1'
+      confirmButtonColor: '#0f172a'
     })
     activeTab.value = 'aftersales'
-
   } catch (e) {
     Swal.fire('提交失败', e.message || '系统繁忙', 'error')
   }
@@ -172,16 +156,8 @@ const confirmReceipt = async (order) => {
     showCancelButton: true,
     confirmButtonText: '确认签收 & 领积分',
     cancelButtonText: '还没收到',
-    confirmButtonColor: '#4F46E5',
-    cancelButtonColor: '#94a3b8',
     focusConfirm: false,
     reverseButtons: true,
-    customClass: {
-      popup: 'rounded-[32px] p-6',
-      actions: 'gap-4',
-      confirmButton: 'px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200',
-      cancelButton: 'px-6 py-3 rounded-xl font-medium'
-    }
   })
 
   if (!result.isConfirmed) return
@@ -196,12 +172,10 @@ const confirmReceipt = async (order) => {
       title: '<span class="text-indigo-600 font-bold">交易完成!</span>',
       html: `<div class="py-2"><p class="text-slate-500 mb-2">积分已火速到账</p><div class="inline-block bg-orange-100 text-orange-600 px-4 py-1 rounded-full font-bold">当前积分: ${updatedUser.points}</div></div>`,
       timer: 2500,
-      showConfirmButton: false,
-      customClass: { popup: 'rounded-[32px]' }
+      showConfirmButton: false
     })
-
   } catch (e) {
-    Swal.fire({ title: '操作失败', text: '网络似乎开了小差，请稍后再试', icon: 'error', customClass: { popup: 'rounded-[24px]' } })
+    Swal.fire({ title: '操作失败', text: '网络似乎开了小差，请稍后再试', icon: 'error' })
   }
 }
 
@@ -214,43 +188,28 @@ const deleteOrder = async (id) => {
 const handleAvatarUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
-
   if (file.size > 2 * 1024 * 1024) {
     Swal.fire('文件过大', '请上传 2MB 以内的图片', 'warning')
     return
   }
-
   const reader = new FileReader()
   reader.readAsDataURL(file)
-
   reader.onload = async () => {
-    const base64String = reader.result
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('username', store.currentUser.username);
-
       const token = localStorage.getItem('token');
       const response = await fetch('http://localhost:8080/api/users/upload-avatar', {
         method: 'POST',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' },
         body: formData
       });
-
-      if (!response.ok) {
-        throw new Error('上传失败');
-      }
-
+      if (!response.ok) throw new Error('上传失败');
       const updatedUser = await response.json();
-      if (store.currentUser) {
-        store.currentUser.avatar = updatedUser.avatar
-      }
+      if (store.currentUser) store.currentUser.avatar = updatedUser.avatar
       store.login(updatedUser)
-
       Swal.fire('成功', '头像更新成功', 'success')
-
     } catch (e) {
       console.error(e)
       Swal.fire('上传失败', '图片上传出错，请稍后重试', 'error')
@@ -261,6 +220,9 @@ const handleAvatarUpload = async (event) => {
 const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); showAddressModal.value = false; }
 const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); }
 
+// ============================================
+// 修复核心：定位功能 (Locate User)
+// ============================================
 const locateUser = () => {
   if (typeof AMap === 'undefined') {
     Swal.fire('错误', '地图组件未加载，请刷新页面重试', 'error')
@@ -275,27 +237,25 @@ const locateUser = () => {
     const geolocation = new AMap.Geolocation({
       enableHighAccuracy: true,
       timeout: 10000,
-      zoomToAccuracy: true
+      zoomToAccuracy: true,
+      // 🚫 核心修复：禁用所有UI元素，防止产生白色遮罩
+      showButton: false,
+      showMarker: false,
+      showCircle: false,
+      panToLocation: false
     })
 
     geolocation.getCurrentPosition(function (status, result) {
       if (status === 'complete') {
-        console.log('Profile定位成功(经纬度):', result.position)
+        console.log('定位成功:', result.position)
 
-        const geocoder = new AMap.Geocoder({
-          radius: 1000,
-          extensions: 'all'
-        })
+        const geocoder = new AMap.Geocoder({ radius: 1000, extensions: 'all' })
 
         geocoder.getAddress(result.position, function (status, data) {
           isLocating.value = false
-
           if (status === 'complete' && data.regeocode) {
             const addr = data.regeocode.formattedAddress
-            console.log('逆地理编码结果:', addr)
-
             newAddress.value.detail = addr
-
             Swal.fire({
               toast: true,
               position: 'top',
@@ -306,16 +266,14 @@ const locateUser = () => {
               showConfirmButton: false
             })
           } else {
-            console.error('逆地理编码失败:', data)
             newAddress.value.detail = `(已定位到经纬度: ${result.position}, 但地址解析超时)`
-            Swal.fire('提示', '获取经纬度成功，但无法转为文字地址，请手动补充', 'warning')
+            Swal.fire('提示', '地址解析失败，请手动补充', 'warning')
           }
         })
-
       } else {
         isLocating.value = false
         console.error("定位失败:", result.message)
-        Swal.fire('定位失败', '请检查网络或GPS设置', 'error')
+        Swal.fire('定位失败', '请检查GPS或网络设置', 'error')
       }
     })
   })
@@ -344,7 +302,6 @@ const getStatusColor = (s) => {
 
 <template>
   <div class="min-h-screen bg-slate-50 font-sans relative overflow-hidden selection:bg-indigo-500 selection:text-white">
-
     <div class="fixed inset-0 pointer-events-none">
       <div
         class="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] bg-indigo-400/20 rounded-full blur-[120px] animate-blob">
@@ -358,7 +315,6 @@ const getStatusColor = (s) => {
     </div>
 
     <div class="relative max-w-6xl mx-auto px-6 py-10">
-
       <header class="flex justify-between items-center mb-10 animate-fade-down">
         <div class="flex items-center gap-4">
           <div
@@ -379,20 +335,31 @@ const getStatusColor = (s) => {
       </header>
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-
-        <aside class="lg:col-span-4 space-y-6 animate-fade-in-up" style="animation-delay: 0.1s;">
-          <div
-            class="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[32px] p-8 text-white shadow-2xl shadow-indigo-300/50 relative overflow-hidden group">
-            <div
-              class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay">
+        <aside class="lg:col-span-4 space-y-6 animate-fade-in-up sticky top-28 h-fit z-20"
+          style="animation-delay: 0.1s;">
+          <div class="card-glass bg-aurora p-8 group relative isolate">
+            <div class="blob w-32 h-32 bg-blue-500 top-[-20%] left-[-10%]"></div>
+            <div class="blob w-24 h-24 bg-cyan-400 bottom-[-10%] right-[-10%] animation-delay-2000"></div>
+            <div class="absolute inset-0 opacity-20"
+              style="background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\' opacity=\'1\'/%3E%3C/svg%3E'); mix-blend-mode: overlay;">
             </div>
+
             <div class="relative z-10 flex flex-col items-center">
-              <div class="relative w-24 h-24 mb-4">
+              <div class="relative w-24 h-24 mb-5 group/avatar">
+                <div
+                  class="absolute -inset-8 bg-cyan-400/20 rounded-full blur-2xl animate-pulse-halo pointer-events-none">
+                </div>
+                <div
+                  class="absolute -inset-1 bg-gradient-to-tr from-transparent via-white/80 to-transparent rounded-full blur-md opacity-0 animate-shimmer-ring">
+                </div>
+                <div
+                  class="absolute -inset-[3px] rounded-full bg-gradient-to-tr from-cyan-500 via-blue-500 to-indigo-500 opacity-60 blur-[2px] animate-spin-slow">
+                </div>
                 <img
                   :src="store.currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${store.currentUser?.username}`"
-                  class="w-full h-full rounded-full border-[3px] border-white/30 object-cover shadow-lg group-hover:scale-105 transition-transform duration-500">
+                  class="relative w-full h-full rounded-full border-[3px] border-white/40 object-cover shadow-2xl z-10 group-hover:scale-105 transition-transform duration-500">
                 <label
-                  class="absolute bottom-0 right-0 bg-white text-indigo-600 p-2 rounded-full cursor-pointer hover:bg-indigo-50 transition shadow-lg">
+                  class="absolute bottom-0 right-0 z-20 bg-white/10 backdrop-blur-md border border-white/30 text-white p-1.5 rounded-full cursor-pointer hover:bg-white/30 transition-all shadow-lg hover:scale-110">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z">
@@ -401,33 +368,47 @@ const getStatusColor = (s) => {
                   <input type="file" @change="handleAvatarUpload" class="hidden">
                 </label>
               </div>
-              <h2 class="text-2xl font-bold tracking-wide">{{ store.currentUser?.displayName ||
-                store.currentUser?.username }}</h2>
-              <div
-                class="mt-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-mono tracking-wider border border-white/10">
-                SVIP · {{ store.currentUser?.username }}</div>
 
+              <h2 class="text-3xl font-black tracking-wide shimmer-text mb-1 drop-shadow-md">{{
+                store.currentUser?.displayName || store.currentUser?.username }}</h2>
               <div
-                class="mt-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs tracking-wider border border-white/10 flex items-center gap-1">
-                📍 {{ userLocation }}
+                class="mt-2 text-sm font-mono font-bold tracking-[0.2em] opacity-90 shimmer-svip cursor-default select-none mb-4">
+                SVIP · {{ store.currentUser?.username }}</div>
+              <div
+                class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-[10px] text-slate-300 backdrop-blur-sm">
+                <svg class="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <span class="tracking-wider">{{ userLocation }}</span>
               </div>
 
-              <div class="grid grid-cols-3 gap-4 w-full mt-8 border-t border-white/10 pt-6">
-                <div class="text-center">
-                  <div class="text-xl font-bold font-serif-sc">{{ orders.length }}</div>
-                  <div class="text-[10px] opacity-70 mt-1 uppercase">订单</div>
+              <div class="flex items-center justify-between w-full mt-8 border-t border-white/10 pt-6 px-4">
+                <div class="flex flex-col items-center flex-1 cursor-default group/item">
+                  <div
+                    class="text-2xl font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm">
+                    {{ orders.length }}</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">订单</div>
                 </div>
-
-                <div class="text-center cursor-pointer hover:bg-white/10 rounded-lg transition-colors p-1"
+                <div class="w-px h-8 bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+                <div
+                  class="flex flex-col items-center flex-1 cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all"
                   @click="router.push('/coupon')">
-                  <div class="text-xl font-bold font-serif-sc text-orange-300">{{ couponCount }}</div>
-                  <div class="text-[10px] opacity-70 mt-1 uppercase">优惠券</div>
+                  <div
+                    class="text-2xl font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm">
+                    {{ couponCount }}</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">优惠券</div>
                 </div>
-
-                <div class="text-center cursor-pointer hover:bg-white/10 rounded-lg transition-colors p-1"
+                <div class="w-px h-8 bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+                <div
+                  class="flex flex-col items-center flex-1 cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all"
                   @click="router.push('/points')">
-                  <div class="text-xl font-bold font-serif-sc">{{ store.currentUser?.points || 0 }}</div>
-                  <div class="text-[10px] opacity-70 mt-1 uppercase">积分</div>
+                  <div
+                    class="text-2xl font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm">
+                    {{ store.currentUser?.points || 0 }}</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">积分</div>
                 </div>
               </div>
             </div>
@@ -436,16 +417,15 @@ const getStatusColor = (s) => {
           <div
             class="bg-white/70 backdrop-blur-xl border border-white/60 rounded-3xl p-2 shadow-lg shadow-slate-200/50">
             <button @click="activeTab = 'orders'" :class="['nav-btn group', activeTab === 'orders' ? 'active' : '']">
-              <span class="text-2xl">📦</span>
+              <span class="text-2xl"></span>
               <div class="text-left">
                 <div class="font-bold text-sm">我的订单</div>
                 <div class="text-[10px] opacity-60">物流与管理</div>
               </div>
             </button>
-
             <button @click="activeTab = 'aftersales'"
               :class="['nav-btn group', activeTab === 'aftersales' ? 'active' : '']">
-              <span class="text-2xl">🛡️</span>
+              <span class="text-2xl"></span>
               <div class="text-left">
                 <div class="font-bold text-sm">售后服务</div>
                 <div class="text-[10px] opacity-60">退款/退货</div>
@@ -454,9 +434,8 @@ const getStatusColor = (s) => {
                 class="ml-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{{ afterSalesOrders.length
                 }}</div>
             </button>
-
             <button @click="activeTab = 'address'" :class="['nav-btn group', activeTab === 'address' ? 'active' : '']">
-              <span class="text-2xl">📍</span>
+              <span class="text-2xl"></span>
               <div class="text-left">
                 <div class="font-bold text-sm">地址管理</div>
                 <div class="text-[10px] opacity-60">收货设置</div>
@@ -465,8 +444,7 @@ const getStatusColor = (s) => {
           </div>
         </aside>
 
-        <main class="lg:col-span-8 min-h-[500px]">
-
+        <main class="lg:col-span-8 min-h-[600px]">
           <div v-if="activeTab === 'orders'" class="space-y-6 animate-fade-in-up" style="animation-delay: 0.2s;">
             <div class="relative group">
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><svg
@@ -478,12 +456,10 @@ const getStatusColor = (s) => {
                 class="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm focus:shadow-lg focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-slate-400 font-medium"
                 placeholder="搜索订单号 / 商品名称...">
             </div>
-
             <div v-if="paginatedOrders.length === 0" class="empty-state">
-              <div class="text-6xl mb-4 opacity-20">🍃</div>
+              <div class="text-6xl mb-4 opacity-20"></div>
               <p class="text-slate-500 font-medium">{{ searchQuery ? '未找到相关订单' : '暂无订单记录' }}</p>
             </div>
-
             <div v-for="order in paginatedOrders" :key="order.id"
               class="bg-white/90 backdrop-blur-xl rounded-[24px] p-6 shadow-sm border border-white hover:shadow-xl hover:border-indigo-100 transition-all duration-300 group relative overflow-hidden">
               <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
@@ -496,7 +472,6 @@ const getStatusColor = (s) => {
                 <span :class="['px-3 py-1 rounded-full text-xs font-bold border', getStatusColor(order.status)]">{{
                   order.status }}</span>
               </div>
-
               <div class="flex flex-col sm:flex-row gap-6">
                 <div class="flex-1 space-y-4">
                   <div class="flex gap-4 items-center">
@@ -542,7 +517,6 @@ const getStatusColor = (s) => {
                 </div>
               </div>
             </div>
-
             <div v-if="totalPages > 1" class="flex justify-center items-center gap-4 mt-8">
               <button @click="currentPage--" :disabled="currentPage === 1"
                 class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-indigo-50 disabled:opacity-50 transition">←</button>
@@ -555,7 +529,7 @@ const getStatusColor = (s) => {
           <div v-else-if="activeTab === 'aftersales'" class="space-y-6 animate-fade-in-up">
             <div
               class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center gap-3 text-indigo-700 text-sm">
-              <span class="text-xl">🛡️</span>
+              <span class="text-xl"></span>
               <div><strong>售后保障中</strong>
                 <p class="text-xs opacity-70">为您提供 7 天无理由退换货服务</p>
               </div>
@@ -564,47 +538,28 @@ const getStatusColor = (s) => {
               <div class="text-6xl mb-4 opacity-20">📭</div>
               <p class="text-slate-500">暂无售后记录</p>
             </div>
-
             <div v-for="order in afterSalesOrders" :key="order.id"
               class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-
-              <div class="absolute top-0 right-0 px-4 py-1 text-xs font-bold rounded-bl-xl" :class="{
-                'bg-orange-100 text-orange-700': order.status === '售后处理中',
-                'bg-green-100 text-green-700': order.status === '退款成功',
-                'bg-slate-100 text-slate-700': order.status === '已退货'
-              }">
-                {{ order.status === '售后处理中' ? '处理中' : (order.status === '退款成功' ? '退款成功' : order.status) }}
-              </div>
-
+              <div class="absolute top-0 right-0 px-4 py-1 text-xs font-bold rounded-bl-xl"
+                :class="{ 'bg-orange-100 text-orange-700': order.status === '售后处理中', 'bg-green-100 text-green-700': order.status === '退款成功', 'bg-slate-100 text-slate-700': order.status === '已退货' }">
+                {{ order.status === '售后处理中' ? '处理中' : (order.status === '退款成功' ? '退款成功' : order.status) }}</div>
               <h3 class="font-bold text-slate-800 mb-2">售后单 #AS{{ 20250000 + order.id }}</h3>
-              <div class="flex gap-4 bg-slate-50 p-3 rounded-xl mb-4">
-                <img :src="order.items?.[0]?.imageUrl" class="w-12 h-12 rounded-lg object-cover">
+              <div class="flex gap-4 bg-slate-50 p-3 rounded-xl mb-4"><img :src="order.items?.[0]?.imageUrl"
+                  class="w-12 h-12 rounded-lg object-cover">
                 <div>
                   <div class="text-sm font-bold text-slate-700 line-clamp-1">{{ order.productNames }}</div>
                   <div class="text-xs text-slate-400">退款金额: ¥{{ order.totalPrice }}</div>
                 </div>
               </div>
-
               <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-500" :class="{
-                  'bg-orange-500 w-2/3 animate-pulse': order.status === '售后处理中',
-                  'bg-green-500 w-full': order.status === '退款成功'
-                }">
+                <div class="h-full rounded-full transition-all duration-500"
+                  :class="{ 'bg-orange-500 w-2/3 animate-pulse': order.status === '售后处理中', 'bg-green-500 w-full': order.status === '退款成功' }">
                 </div>
               </div>
-
-              <div class="flex justify-between text-[10px] text-slate-400 mt-2">
-                <span>提交申请</span>
-
-                <span :class="{
-                  'text-orange-600 font-bold': order.status === '售后处理中',
-                  'text-green-600': order.status === '退款成功'
-                }">商家审核{{ order.status === '售后处理中' ? '中' : '通过' }}</span>
-
-                <span :class="{
-                  'text-green-600 font-bold': order.status === '退款成功'
-                }">退款到账</span>
-              </div>
+              <div class="flex justify-between text-[10px] text-slate-400 mt-2"><span>提交申请</span><span
+                  :class="{ 'text-orange-600 font-bold': order.status === '售后处理中', 'text-green-600': order.status === '退款成功' }">商家审核{{
+                    order.status === '售后处理中' ? '中' : '通过' }}</span><span
+                  :class="{ 'text-green-600 font-bold': order.status === '退款成功' }">退款到账</span></div>
             </div>
           </div>
 
@@ -613,16 +568,13 @@ const getStatusColor = (s) => {
               class="bg-white/40 border-2 border-dashed border-indigo-200 rounded-[24px] flex flex-col items-center justify-center min-h-[160px] cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-400 transition text-indigo-400 group">
               <div
                 class="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-3 group-hover:scale-110 transition">
-                <span class="text-2xl text-indigo-500">+</span>
-              </div>
-              <span class="font-bold text-sm">新增收货地址</span>
+                <span class="text-2xl text-indigo-500">+</span></div><span class="font-bold text-sm">新增收货地址</span>
             </div>
             <div v-for="(addr, idx) in store.currentUser.addresses" :key="idx"
               class="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100 hover:shadow-lg hover:border-indigo-100 transition-all relative group">
-              <div class="flex items-start justify-between mb-3">
-                <span
+              <div class="flex items-start justify-between mb-3"><span
                   :class="['text-[10px] font-bold px-2 py-1 rounded border', addr.tag === '家' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-blue-50 text-blue-600 border-blue-100']">{{
-                    addr.tag }}</span>
+                  addr.tag }}</span>
                 <div v-if="addr.isDefault" class="text-[10px] text-slate-400 flex items-center gap-1"><span
                     class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> 默认</div>
               </div>
@@ -633,7 +585,6 @@ const getStatusColor = (s) => {
                 class="absolute top-4 right-4 text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition opacity-0 group-hover:opacity-100">✕</button>
             </div>
           </div>
-
         </main>
       </div>
     </div>
@@ -660,7 +611,7 @@ const getStatusColor = (s) => {
           <div class="flex gap-2">
             <span v-for="t in ['家', '公司', '学校']" :key="t" @click="newAddress.tag = t"
               :class="['text-xs px-4 py-2 rounded-xl cursor-pointer border transition font-medium', newAddress.tag === t ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100']">{{
-                t }}</span>
+              t }}</span>
           </div>
         </div>
         <div class="flex gap-3 mt-8">
@@ -694,10 +645,8 @@ const getStatusColor = (s) => {
                 :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '退款退货' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">退货退款</button>
             </div>
           </div>
-          <div>
-            <label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label>
-            <textarea v-model="refundForm.reason" placeholder="请描述您遇到的问题..."
-              class="input-field h-24 resize-none"></textarea>
+          <div><label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label><textarea
+              v-model="refundForm.reason" placeholder="请描述您遇到的问题..." class="input-field h-24 resize-none"></textarea>
           </div>
         </div>
         <div class="flex gap-3 mt-8">
@@ -708,11 +657,108 @@ const getStatusColor = (s) => {
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
+<style>
+/* 强制隐藏高德地图生成的干扰元素 */
+.amap-logo,
+.amap-copyright,
+.amap-geolocation-con,
+.amap-call {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 隐藏可能注入的 iframe */
+iframe[id^="amap"] {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+}
+</style>
+
 <style scoped>
+/* 您的原有样式保持不变 */
+.bg-aurora {
+  background: linear-gradient(-45deg, #0f172a, #1e3a8a, #0ea5e9, #0f172a);
+  background-size: 400% 400%;
+  animation: auroraFlow 15s ease infinite;
+}
+
+@keyframes auroraFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.shimmer-text {
+  background: linear-gradient(110deg, #e2e8f0 30%, #ffffff 50%, #e2e8f0 70%);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: shine 4s linear infinite;
+}
+
+.shimmer-svip {
+  background: linear-gradient(110deg, #67e8f9 35%, #ffffff 50%, #67e8f9 65%);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: shine 3s linear infinite;
+  text-shadow: 0 0 20px rgba(103, 232, 249, 0.5);
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
+}
+
+.card-glass {
+  @apply relative overflow-hidden rounded-[32px] text-white shadow-2xl shadow-blue-900/40;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.4;
+  animation: float 10s infinite ease-in-out;
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  50% {
+    transform: translate(20px, -20px);
+  }
+}
+
 .nav-btn {
   @apply w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 hover:bg-white/50 text-slate-500;
 }
@@ -812,6 +858,67 @@ const getStatusColor = (s) => {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+.animate-pulse-halo {
+  animation: pulseHalo 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulseHalo {
+
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+.animate-shimmer-ring {
+  animation: shimmerRing 3s ease-in-out infinite;
+}
+
+@keyframes shimmerRing {
+
+  0%,
+  100% {
+    opacity: 0;
+    transform: rotate(0deg);
+  }
+
+  25% {
+    opacity: 0.8;
+  }
+
+  50% {
+    opacity: 0.2;
+  }
+
+  75% {
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: rotate(180deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin 10s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

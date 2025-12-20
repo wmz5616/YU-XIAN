@@ -97,7 +97,7 @@ const initChart = () => {
   const minPrice = Math.min(...prices)
 
   myChart.setOption({
-    grid: { top: 30, bottom: 20, left: 40, right: 20 },
+    grid: { top: 30, bottom: 0, left: 0, right: 0 },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -108,28 +108,29 @@ const initChart = () => {
     xAxis: {
       type: 'category',
       data: dates,
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#64748b', fontSize: 10 },
-      axisTick: { show: false }
+      axisTick: { show: false },
+      axisLine: { show: false },
+      axisLabel: { show: false },
     },
     yAxis: {
       type: 'value',
       min: Math.floor(minPrice * 0.9),
-      splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } },
-      axisLabel: { color: '#64748b', formatter: '¥{value}' }
+      splitLine: { show: false },
+      axisLabel: { show: false },
     },
     series: [{
       data: prices,
       type: 'line',
-      smooth: 0.4,
-      symbol: 'circle',
+      smooth: 0.6,
+      symbol: 'none',
       symbolSize: 8,
       itemStyle: { color: '#2563eb', borderWidth: 2, borderColor: '#fff' },
-      lineStyle: { color: '#2563eb', width: 3, shadowColor: 'rgba(37,99,235,0.2)', shadowBlur: 10 },
+      lineStyle: { width: 0 },
       areaStyle: {
+        opacity: 0.8,
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(37, 99, 235, 0.2)' },
-          { offset: 1, color: 'rgba(37, 99, 235, 0)' }
+          { offset: 0, color: '#3b82f6' },
+          { offset: 1, color: '#93c5fd' }
         ])
       },
       markPoint: {
@@ -300,8 +301,14 @@ watch(() => route.params.id, () => { window.location.reload() })
                   :disabled="buyCount >= product.stock">+</button>
               </div>
             </div>
-            <button @click="(e) => addToCart(e)" :disabled="product.stock <= 0"
-              class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-lg shadow-xl shadow-slate-900/20 transition-all active:scale-[0.98] disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+
+            <button @click="(e) => addToCart(e)" :disabled="product.stock <= 0" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg 
+         shadow-xl shadow-slate-900/20 
+         hover:bg-blue-900 hover:shadow-2xl hover:shadow-blue-900/20 hover:-translate-y-0.5
+         active:scale-95 active:bg-slate-800
+         transition-all duration-200 ease-out
+         disabled:bg-slate-300 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-y-0
+         flex items-center justify-center gap-2">
               <span v-if="isAdding"
                 class="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full"></span>
               <span>{{ product.stock > 0 ? '立即购买' : '暂时缺货' }}</span>

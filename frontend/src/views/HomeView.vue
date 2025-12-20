@@ -148,7 +148,7 @@ onUnmounted(() => { window.removeEventListener('scroll', handleScroll) })
 
           <input v-model="searchQuery" @focus="isSearchFocused = true" @keyup.enter="handleSearch" type="text"
             placeholder="搜索"
-            class="w-full pl-14 pr-6 py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/30 text-white placeholder-white/60 focus:outline-none focus:bg-white/20 focus:border-white/50 focus:ring-4 focus:ring-white/10 transition-all shadow-2xl relative z-10 font-light tracking-wide">
+            class="shadow-2xl shadow-blue-900/20 focus:shadow-glow-blue w-full pl-14 pr-6 py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/30 text-white placeholder-white/60 focus:outline-none focus:bg-white/20 focus:border-white/50 focus:ring-4 focus:ring-white/10 transition-all shadow-2xl relative z-10 font-light tracking-wide">
 
           <Transition name="fade">
             <div v-if="isSearchFocused"
@@ -231,8 +231,13 @@ onUnmounted(() => { window.removeEventListener('scroll', handleScroll) })
           <ProductSkeleton v-for="n in 8" :key="n" />
         </template>
         <template v-else>
-          <div v-for="(product, index) in displayedProducts" :key="product.id" @click="goToDetail(product.id)"
-            v-scroll-reveal :class="`group cursor-pointer delay-${(index % 4) * 100}`">
+          <div 
+  v-for="(product, index) in displayedProducts" 
+  :key="product.id" 
+  @click="goToDetail(product.id)"
+  class="group cursor-pointer animate-fade-in-up opacity-0"
+  :style="{ animationDelay: `${index * 100}ms` }" 
+>
             <div v-tilt
               class="relative aspect-[4/3] rounded-2xl overflow-hidden mb-4 bg-white border border-slate-100 shadow-sm transition-shadow duration-300 group-hover:shadow-2xl group-hover:shadow-blue-900/20"
               style="transform-style: preserve-3d;">
