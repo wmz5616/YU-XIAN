@@ -34,7 +34,7 @@ export const store = reactive({
   myCoupons: [],
   pointLogs: savedLogs,
 
-  notification: { show: false, message: "", type: "success" },
+  notification: { show: false, message: "", type: "success", duration: 3000 },
   flySignal: { id: 0, rect: null, img: "" },
 
   get cartCount() {
@@ -167,12 +167,20 @@ export const store = reactive({
     this.showNotification("您已安全退出", "success");
   },
 
-  showNotification(msg, type = "success") {
+  showNotification(msg, type = "success", duration = 3000) {
     this.notification.message = msg;
     this.notification.type = type;
     this.notification.show = true;
-    setTimeout(() => {
+    
+    if (type === 'loading') return; 
+
+    if (this.notificationTimer) clearTimeout(this.notificationTimer);
+    this.notificationTimer = setTimeout(() => {
       this.notification.show = false;
-    }, 3000);
+    }, duration);
   },
+
+  hideNotification() {
+    this.notification.show = false;
+  }
 });
