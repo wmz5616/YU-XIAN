@@ -32,7 +32,6 @@ watch(() => store.flySignal.id, () => {
   }
 })
 
-// 购物车飞入动画
 const startFlyAnimation = (startRect, imgUrl) => {
   if (!cartBtnRef.value) return
   const cartRect = cartBtnRef.value.getBoundingClientRect()
@@ -71,7 +70,6 @@ const handleLogout = () => {
 
 const isActive = (path) => route.path === path
 
-// 获取光晕颜色
 const getGlowColor = (type) => {
   switch (type) {
     case 'success': return '0 10px 40px -10px rgba(16, 185, 129, 0.4), inset 0 0 20px rgba(16, 185, 129, 0.1)'
@@ -82,7 +80,6 @@ const getGlowColor = (type) => {
   }
 }
 
-// 获取呼吸灯颜色
 const getLightColor = (type) => {
   switch (type) {
     case 'success': return 'bg-emerald-400'
@@ -419,7 +416,6 @@ const getLightColor = (type) => {
 </template>
 
 <style>
-/* 🚀 性能优化: 开启硬件加速提示 */
 .will-change-transform {
   will-change: transform;
 }
@@ -432,12 +428,10 @@ const getLightColor = (type) => {
   will-change: border-radius;
 }
 
-/* 🌊 终极液态物理引擎: 滴落 -> 拉伸 -> 摊开 -> 回弹 */
 .liquid-enter-active {
   animation: liquid-drop 0.75s cubic-bezier(0.23, 1, 0.32, 1) forwards;
 }
 
-/* 离场: 时间倒流，实现丝滑吸回效果 */
 .liquid-leave-active {
   animation: liquid-drop 0.6s cubic-bezier(0.5, 0, 0.75, 0) reverse forwards;
 }
@@ -445,7 +439,6 @@ const getLightColor = (type) => {
 @keyframes liquid-drop {
   0% {
     opacity: 0;
-    /* 使用 translate3d 强制 GPU 加速 */
     transform: translate3d(-50%, -120%, 0) scale(0.5, 0.5);
     width: 60px;
     border-radius: 5px 5px 50% 50%;
@@ -478,7 +471,6 @@ const getLightColor = (type) => {
   }
 }
 
-/* 全息扫描光波 */
 @keyframes scan-once {
   0% {
     transform: translateX(-100%) skewX(-15deg);
@@ -499,7 +491,6 @@ const getLightColor = (type) => {
   animation: scan-once 0.8s ease-out forwards;
 }
 
-/* 图标弹入 */
 @keyframes scale-in {
   0% {
     transform: scale(0);
@@ -520,7 +511,6 @@ const getLightColor = (type) => {
   animation: scale-in 0.4s 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
-/* 错误震动 */
 @keyframes shake {
 
   0%,
@@ -541,7 +531,6 @@ const getLightColor = (type) => {
   animation: shake 0.3s ease-in-out;
 }
 
-/* 页面切换动画 */
 .page-enter-active,
 .page-leave-active {
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -553,13 +542,8 @@ const getLightColor = (type) => {
   transform: translateY(8px);
 }
 
-/* =========================================
-   SweetAlert2: Museum Grade White (白瓷质感)
-   ========================================= */
-
 div:where(.swal2-container) div:where(.swal2-popup) {
   background-color: #ffffff !important;
-  /* 修复：移除了复杂的 SVG 背景，防止 CSS 解析错误导致页面显示白条 */
   border-radius: 32px !important;
   padding: 3rem 2.5rem !important;
   color: #1e293b !important;

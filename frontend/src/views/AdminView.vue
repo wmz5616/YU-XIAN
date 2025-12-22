@@ -330,7 +330,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                     <img src="/icons/logo.png" class="w-8 h-8 object-contain" />
                     <span class="text-xl font-bold text-slate-800 dark:text-white tracking-wider">渔鲜·后台</span>
                 </div>
-                <div class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Management System</div>
+                <div class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">管理系统</div>
             </div>
 
             <nav class="flex-1 mt-6 px-4 space-y-2 overflow-y-auto relative z-10">
@@ -339,7 +339,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'dashboard'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span>📊</span><span>数据总览</span>
+                    <span></span><span>数据总览</span>
                 </a>
 
                 <a @click="switchTab('orders')"
@@ -347,7 +347,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'orders'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span>📦</span><span>订单管理</span>
+                    <span></span><span>订单管理</span>
                 </a>
 
                 <a @click="switchTab('products')"
@@ -355,7 +355,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'products'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span>🛍️</span><span>商品管理</span>
+                    <span></span><span>商品管理</span>
                 </a>
 
                 <a @click="switchTab('refund')"
@@ -363,7 +363,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'refund'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span>🛡️</span><span>售后处理</span>
+                    <span></span><span>售后处理</span>
                 </a>
 
                 <a @click="switchTab('users')"
@@ -371,7 +371,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         currentTab === 'users'
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
-                    <span>👥</span><span>用户管理</span>
+                    <span></span><span>用户管理</span>
                 </a>
             </nav>
 
@@ -445,15 +445,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                         class="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
                         <div ref="chartRef" class="w-full h-[350px]"></div>
                     </div>
-                    <div
-                        class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
-                        <h3 class="font-bold text-slate-800 dark:text-white mb-4">✨ 系统公告</h3>
-                        <div
-                            class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50 text-sm text-blue-800 dark:text-blue-300 leading-relaxed">
-                            <strong>版本更新 v2.0：</strong><br>
-                            后台管理系统已全面升级！现在支持暗夜模式切换，侧边栏UI优化，并新增了售后处理模块。
-                        </div>
-                    </div>
+                    
                 </div>
 
                 <div

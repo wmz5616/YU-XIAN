@@ -1,12 +1,16 @@
 package com.yuxian.backend.service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.util.HashMap;
@@ -22,41 +26,72 @@ public class GeminiService {
     @Value("${gemini.api.url}")
     private String apiUrl;
 
-    public String getRecipeAdvice(String productName, String userQuestion) {
-        // 拼接 API Key
+    private static final boolean USE_PROXY = true;
+    private static final String PROXY_HOST = "127.0.0.1";
+    private static final int PROXY_PORT = 7897; 
+
+    public String getAiResponse(String productName, String userQuestion) {
         String fullUrl = apiUrl + apiKey;
 
-        // 🟢 关键修改：配置本地代理 (解决 Google 连不上的问题)
-        // 如果你的 VPN 端口不是 7890，请在这里修改！
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 7897));
-        factory.setProxy(proxy);
-        factory.setConnectTimeout(15000); // 设置超时时间 15秒
-        factory.setReadTimeout(15000);
+        if (USE_PROXY) {
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(PROXY_HOST, PROXY_PORT));
+            factory.setProxy(proxy);
+        }
+        factory.setConnectTimeout(30000);
+        factory.setReadTimeout(30000);
+        factory.setBufferRequestBody(false); 
 
         RestTemplate restTemplate = new RestTemplate(factory);
 
-        // 构建提示词
-        String systemPrompt = "你是一位精通海鲜烹饪的米其林大厨。用户正在询问关于产品【" + productName + "】的问题。请用简洁、诱人且专业的语言回答。不要废话。";
+        boolean shouldSearch = userQuestion.contains("视频") 
+                            || userQuestion.toLowerCase().contains("video")
+                            || userQuestion.contains("观看");
+
+        StringBuilder systemPrompt = new StringBuilder();
+        systemPrompt.append("你是一位海鲜领域的资深专家。");
+        systemPrompt.append("请严格遵守以下规则：\n");
+        systemPrompt.append("1. **直接回答**：不要废话，不要打招呼。\n");
+        systemPrompt.append("2. **排版清晰**：使用Markdown格式（粗体、列表）。\n");
+
+        if (shouldSearch) {
+            systemPrompt.append("3. **联网搜索**：用户正在寻找【视频教程】，请务必使用 Google Search 工具找到 Bilibili/YouTube/下厨房 的视频链接。\n");
+            systemPrompt.append("4. **链接格式**：必须以 Markdown 格式返回，例如：[点击观看视频](URL)。\n");
+        } else {
+            systemPrompt.append("3. **纯文本回答**：请根据你的知识库直接回答，无需联网搜索，除非你通过工具发现资料不足。\n");
+        }
         
-        // 构建请求体
+        if (StringUtils.hasText(productName)) {
+            systemPrompt.append("\n用户当前正在查看：").append(productName);
+        }
+
+        String finalPrompt = systemPrompt.toString() + "\n\n用户问题：" + userQuestion;
+
         Map<String, Object> content = new HashMap<>();
         content.put("role", "user");
-        content.put("parts", List.of(Map.of("text", systemPrompt + "\n用户问题：" + userQuestion)));
+        content.put("parts", List.of(Map.of("text", finalPrompt)));
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("contents", List.of(content));
 
+        if (shouldSearch) {
+            System.out.println("🔍 检测到视频需求，正在挂载 Google Search 工具...");
+            Map<String, Object> googleSearchTool = new HashMap<>();
+            Map<String, Object> tool = new HashMap<>();
+            tool.put("google_search", googleSearchTool);
+            
+            requestBody.put("tools", List.of(tool));
+        }
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Connection", "close"); 
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
 
         try {
-            System.out.println("正在请求 Gemini API: " + fullUrl); // 打印日志方便调试
             Map response = restTemplate.postForObject(fullUrl, request, Map.class);
             
-            // 解析结果
             if (response != null && response.containsKey("candidates")) {
                 List<Map> candidates = (List<Map>) response.get("candidates");
                 if (!candidates.isEmpty()) {
@@ -65,11 +100,13 @@ public class GeminiService {
                     return (String) parts.get(0).get("text");
                 }
             }
-            return "大厨正在思考，但好像没有说话...";
-
+            return "（思考中...）";
+        } catch (HttpClientErrorException e) {
+            System.err.println("Gemini Error: " + e.getResponseBodyAsString());
+            return "API Error: " + e.getStatusCode();
         } catch (Exception e) {
-            e.printStackTrace(); // 🔴 这一步非常重要，看控制台报错是什么
-            return "连接大厨失败，请检查后端控制台日志 (Proxy/VPN error?)";
+            e.printStackTrace();
+            return "系统错误: " + e.getMessage();
         }
     }
 }

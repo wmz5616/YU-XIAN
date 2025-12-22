@@ -4,6 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { store } from '../store.js'
 import * as echarts from 'echarts'
 import { request } from '@/utils/request'
+import MarkdownIt from 'markdown-it'
+
+const md = new MarkdownIt({ breaks: true })
 
 const route = useRoute()
 const router = useRouter()
@@ -15,50 +18,53 @@ const buyCount = ref(1)
 const isAdding = ref(false)
 const mapInstance = ref(null)
 
-// --- AI 助手逻辑 (升级版) ---
 const showAiChat = ref(false)
 const aiLoading = ref(false)
-const chatHistory = ref([]) // 初始为空，由逻辑控制欢迎语
-const suggestedQuestions = ref(['最适合的做法是什么？', '处理时要注意什么？', '哪怕是清蒸需要放什么佐料？', '配什么酒最好？'])
+const aiTyping = ref(false)
+const chatHistory = ref([])
+const chatBoxRef = ref(null)
 
-// 问候语逻辑
-const greetingText = ref('')
-const showGreetingBubble = ref(false)
-const fullGreeting = "您好！我是您的小助理，请问有什么可以帮您的吗？"
+const suggestedQuestions = ref(['怎么做最好吃？','需要冷冻保存吗？','发什么快递？'])
 
-const startGreetingTypewriter = async () => {
-  // 延迟 800ms 开始，让页面先渲染完
-  await new Promise(r => setTimeout(r, 800))
-  showGreetingBubble.value = true
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatBoxRef.value) {
+      chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
+    }
+  })
+}
 
-  for (let i = 0; i < fullGreeting.length; i++) {
-    greetingText.value += fullGreeting[i]
-    // 打字速度
-    await new Promise(r => setTimeout(r, 50))
+const typeWriterEffect = async (fullText) => {
+  aiTyping.value = true
+
+  const msgIndex = chatHistory.value.push({ role: 'ai', content: '', html: '' }) - 1
+  const msg = chatHistory.value[msgIndex]
+
+  const speed = 30
+  for (let i = 0; i < fullText.length; i++) {
+    if (!showAiChat.value) break;
+
+    msg.content += fullText[i]
+    msg.html = md.render(msg.content)
+    scrollToBottom()
+    await new Promise(r => setTimeout(r, speed))
   }
 
-  // 自动收起逻辑 (可选：10秒后自动淡出，保持页面清爽)
-  // setTimeout(() => { showGreetingBubble.value = false }, 10000)
+  aiTyping.value = false
 }
 
 const toggleChat = () => {
   showAiChat.value = !showAiChat.value
-  // 打开聊天框时，隐藏外部的气泡
-  if (showAiChat.value) {
-    showGreetingBubble.value = false
-    // 如果没有历史消息，AI 先说话
-    if (chatHistory.value.length === 0) {
-      chatHistory.value.push({ role: 'ai', content: fullGreeting })
-    }
-  }
+  if (showAiChat.value) scrollToBottom()
 }
 
-// 发送消息
 const askAi = async (question) => {
-  if (!question) return
+  if (!question || aiLoading.value || aiTyping.value) return
   if (!product.value) return
 
   chatHistory.value.push({ role: 'user', content: question })
+  scrollToBottom()
+
   aiLoading.value = true
 
   try {
@@ -66,26 +72,23 @@ const askAi = async (question) => {
       productName: product.value.name,
       question: question
     })
-    chatHistory.value.push({ role: 'ai', content: res.answer })
-    nextTick(() => {
-      const chatBox = document.getElementById('chat-box-container')
-      if (chatBox) chatBox.scrollTop = chatBox.scrollHeight
-    })
+
+    aiLoading.value = false
+    await typeWriterEffect(res.answer)
+
   } catch (e) {
     console.error(e)
-    chatHistory.value.push({ role: 'ai', content: '网络信号不佳，请稍后重试...' })
-  } finally {
     aiLoading.value = false
+    chatHistory.value.push({
+      role: 'ai',
+      content: '网络开小差了，请重试 😭',
+      html: '<p>网络开小差了，请重试 😭</p>'
+    })
+    scrollToBottom()
   }
 }
-// --- AI 逻辑结束 ---
 
-// --- 原有地图与图表逻辑 (保持不变) ---
-const SVG_PIN = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="none">
-  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#0f172a" stroke="white" stroke-width="2"/>
-  <circle cx="12" cy="9" r="3" fill="white"/>
-</svg>`
+const SVG_PIN = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#0f172a" stroke="white" stroke-width="2"/><circle cx="12" cy="9" r="3" fill="white"/></svg>`
 
 const initMap = () => {
   if (!insightData.value || !insightData.value.trajectory || !window.AMap) return
@@ -101,16 +104,7 @@ const initMap = () => {
     strokeColor: "#2563eb", strokeOpacity: 1, strokeWeight: 5, strokeStyle: "dashed", strokeDasharray: [15, 10], lineJoin: 'round'
   })
   map.add(polyline)
-  // ... (Marker logic omitted for brevity, keeping same logic)
-  const createLabel = (title, sub) => `
-    <div class="flex flex-col items-center transform transition-transform hover:scale-110" style="pointer-events: none;">
-      <div class="bg-slate-900/90 backdrop-blur text-white px-3 py-1.5 rounded-lg shadow-xl mb-1 flex flex-col items-center border border-slate-700/50">
-        <span class="text-xs font-bold whitespace-nowrap">${title}</span>
-        <span class="text-[10px] text-slate-300 uppercase tracking-wider">${sub}</span>
-      </div>
-      <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-slate-900/90 mb-1"></div>
-      <div class="relative top-[-4px] drop-shadow-md">${SVG_PIN}</div>
-    </div>`
+  const createLabel = (title, sub) => `<div class="flex flex-col items-center transform transition-transform hover:scale-110" style="pointer-events: none;"><div class="bg-slate-900/90 backdrop-blur text-white px-3 py-1.5 rounded-lg shadow-xl mb-1 flex flex-col items-center border border-slate-700/50"><span class="text-xs font-bold whitespace-nowrap">${title}</span><span class="text-[10px] text-slate-300 uppercase tracking-wider">${sub}</span></div><div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-slate-900/90 mb-1"></div><div class="relative top-[-4px] drop-shadow-md">${SVG_PIN}</div></div>`
   const startMarker = new window.AMap.Marker({ position: traj[0], content: createLabel('捕捞海域', 'Origin'), offset: new window.AMap.Pixel(-24, -85), zIndex: 10 })
   const endMarker = new window.AMap.Marker({ position: endPoint, content: createLabel(`${product.value.origin}港`, 'Port'), offset: new window.AMap.Pixel(-24, -85), zIndex: 100 })
   map.add([startMarker, endMarker])
@@ -139,6 +133,7 @@ const changeCount = (delta) => {
   if (newVal < 1) { buyCount.value = 1; return }
   buyCount.value = newVal
 }
+
 const addToCart = async (event) => {
   if (!product.value) return
   const inCartCount = store.getProductCount(product.value.id)
@@ -168,10 +163,6 @@ onMounted(async () => {
     fetchRelated(product.value.category, id)
     insightData.value = await request(`/api/products/${id}/insight`)
     nextTick(() => { initChart(); initMap() })
-
-    // 启动 Siri 问候逻辑
-    startGreetingTypewriter()
-
   } catch (error) { console.error(error) }
 })
 
@@ -181,7 +172,6 @@ watch(() => route.params.id, () => { window.location.reload() })
 
 <template>
   <div v-if="product" class="min-h-screen bg-[#F8FAFC] font-sans text-slate-800 pb-24 relative overflow-hidden">
-
     <nav
       class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/60 transition-all duration-300">
       <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -240,9 +230,8 @@ watch(() => route.params.id, () => { window.location.reload() })
                 <div class="h-full bg-slate-800 rounded-full transition-all duration-500"
                   :style="`width: ${Math.min(product.stock, 100)}%`"></div>
               </div>
-              <span class="text-xs font-bold" :class="product.stock < 10 ? 'text-red-500' : 'text-slate-500'">
-                库存: {{ product.stock }} {{ getUnit(product.name) }}
-              </span>
+              <span class="text-xs font-bold" :class="product.stock < 10 ? 'text-red-500' : 'text-slate-500'">库存: {{
+                product.stock }} {{ getUnit(product.name) }}</span>
             </div>
           </div>
 
@@ -305,16 +294,13 @@ watch(() => route.params.id, () => { window.location.reload() })
               <div class="absolute top-0 right-0 w-40 h-40 bg-blue-500 rounded-full blur-[80px] opacity-30"></div>
               <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 relative z-10">实时环境</h3>
               <div class="space-y-5 relative z-10">
-                <div class="flex justify-between items-center border-b border-white/10 pb-3">
-                  <span class="text-sm text-slate-300">海水温度</span><span
-                    class="font-mono text-xl font-bold text-blue-200">{{ insightData.environment?.waterTemp }}°C</span>
-                </div>
-                <div class="flex justify-between items-center border-b border-white/10 pb-3">
-                  <span class="text-sm text-slate-300">海水盐度</span><span
-                    class="font-mono text-xl font-bold text-teal-200">{{ insightData.environment?.salinity }}%</span>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-sm text-slate-300">作业风力</span><span
+                <div class="flex justify-between items-center border-b border-white/10 pb-3"><span
+                    class="text-sm text-slate-300">海水温度</span><span class="font-mono text-xl font-bold text-blue-200">{{
+                      insightData.environment?.waterTemp }}°C</span></div>
+                <div class="flex justify-between items-center border-b border-white/10 pb-3"><span
+                    class="text-sm text-slate-300">海水盐度</span><span class="font-mono text-xl font-bold text-teal-200">{{
+                      insightData.environment?.salinity }}%</span></div>
+                <div class="flex justify-between items-center"><span class="text-sm text-slate-300">作业风力</span><span
                     class="font-mono text-xl font-bold text-orange-200">{{ insightData.environment?.windSpeed }}级</span>
                 </div>
               </div>
@@ -348,107 +334,88 @@ watch(() => route.params.id, () => { window.location.reload() })
 
     <div class="fixed bottom-10 right-8 z-50 flex flex-col items-end gap-6 pointer-events-none">
 
-      <transition enter-active-class="transform transition duration-500 ease-out"
-        enter-from-class="opacity-0 translate-y-4 scale-90" enter-to-class="opacity-100 translate-y-0 scale-100"
-        leave-active-class="transform transition duration-300 ease-in" leave-from-class="opacity-100 scale-100"
-        leave-to-class="opacity-0 scale-90">
-        <div v-if="showGreetingBubble"
-          class="pointer-events-auto bg-white/80 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(31,38,135,0.15)] rounded-2xl p-4 max-w-[280px] relative mb-2">
-          <div class="text-sm font-medium text-slate-800 leading-relaxed tracking-wide">
-            {{ greetingText }}<span class="animate-pulse">|</span>
-          </div>
-          <div
-            class="absolute -bottom-2 right-8 w-4 h-4 bg-white/80 border-b border-r border-white/50 transform rotate-45">
-          </div>
-        </div>
-      </transition>
-
-      <transition enter-active-class="transform transition duration-500 cubic-bezier(0.34, 1.56, 0.64, 1)"
-        enter-from-class="opacity-0 translate-y-20 scale-90 blur-sm"
-        enter-to-class="opacity-100 translate-y-0 scale-100 blur-0"
-        leave-active-class="transform transition duration-300 ease-in"
-        leave-from-class="opacity-100 translate-y-0 scale-100 blur-0"
-        leave-to-class="opacity-0 translate-y-20 scale-90 blur-sm">
+      <transition name="chat-pop">
         <div v-if="showAiChat"
-          class="pointer-events-auto w-[360px] h-[550px] rounded-[40px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden relative border border-white/40 siri-glass-panel">
+          class="pointer-events-auto w-[380px] h-[550px] bg-white rounded-[24px] shadow-2xl flex flex-col overflow-hidden relative border border-slate-200 ring-4 ring-slate-100">
 
-          <div
-            class="h-16 flex justify-between items-center px-6 border-b border-white/10 bg-white/10 backdrop-blur-md">
+          <div class="h-14 flex justify-between items-center px-5 border-b border-slate-100 bg-white z-10">
             <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-full siri-gradient flex items-center justify-center animate-spin-slow">
-                <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                </svg>
-              </div>
               <div>
-                <span class="block text-sm font-bold text-slate-800">AI Chef</span>
-                <span class="block text-[10px] text-slate-500 font-medium tracking-wider uppercase">Online</span>
+                <span class="block text-sm font-bold text-slate-800">小助手</span>
+                <span class="block text-[10px] text-green-500 font-medium">● 在线</span>
               </div>
             </div>
             <button @click="toggleChat"
-              class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition text-slate-500">✕</button>
+              class="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition text-slate-400">✕</button>
           </div>
 
-          <div id="chat-box-container" class="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar bg-white/40">
-            <div v-for="(msg, idx) in chatHistory" :key="idx" class="flex gap-4"
+          <div ref="chatBoxRef"
+            class="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8FAFC] custom-scrollbar scroll-smooth">
+            <div v-if="chatHistory.length === 0"
+              class="flex flex-col items-center justify-center h-full opacity-40 space-y-4">
+              <p class="text-xs text-slate-500">我是您的AI小助手，尽管问我吧~</p>
+            </div>
+
+            <div v-for="(msg, idx) in chatHistory" :key="idx" class="flex gap-3 w-full"
               :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
-              <div class="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm text-sm"
-                :class="msg.role === 'ai' ? 'bg-gradient-to-br from-white to-slate-100 text-blue-500' : 'bg-slate-800 text-white'">
-                {{ msg.role === 'ai' ? '🤖' : 'Me' }}
+              <div
+                class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs shadow-sm border border-slate-100"
+                :class="msg.role === 'ai' ? 'bg-white' : 'bg-slate-800 text-white'">
+                {{ msg.role === 'ai' ? 'AI' : '我' }}
               </div>
 
-              <div
-                class="max-w-[80%] p-3.5 rounded-2xl text-[13px] leading-relaxed shadow-sm border border-white/50 backdrop-blur-sm"
-                :class="msg.role === 'ai' ? 'bg-white/80 text-slate-700 rounded-tl-none' : 'bg-slate-800/90 text-white rounded-tr-none'">
-                {{ msg.content }}
+              <div :class="[
+                'max-w-[80%] px-4 py-3 rounded-2xl text-[13px] leading-relaxed shadow-sm break-words',
+                msg.role === 'user'
+                  ? 'bg-slate-800 text-white rounded-tr-none'
+                  : 'bg-white text-slate-700 border border-slate-200 rounded-tl-none markdown-body'
+              ]">
+                <div v-if="msg.html" v-html="msg.html"></div>
+                <div v-else>{{ msg.content }}</div>
               </div>
             </div>
 
-            <div v-if="aiLoading" class="flex gap-4 items-center pl-2">
+            <div v-if="aiLoading" class="flex gap-3 w-full">
               <div
-                class="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm border border-white/50">
+                class="w-8 h-8 rounded-full bg-white flex-shrink-0 flex items-center justify-center shadow-sm border border-slate-100">
                 🤖</div>
-              <div class="flex items-center gap-1 h-8">
-                <div class="w-1 bg-cyan-400 rounded-full animate-wave h-3"></div>
-                <div class="w-1 bg-blue-500 rounded-full animate-wave h-5 delay-75"></div>
-                <div class="w-1 bg-purple-500 rounded-full animate-wave h-4 delay-150"></div>
-                <div class="w-1 bg-pink-500 rounded-full animate-wave h-2 delay-200"></div>
+              <div
+                class="bg-white px-4 py-3 rounded-2xl rounded-tl-none border border-slate-200 shadow-sm flex items-center gap-1">
+                <div class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
+                <div class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-75"></div>
+                <div class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-150"></div>
               </div>
             </div>
           </div>
 
-          <div class="p-5 bg-white/60 backdrop-blur-xl border-t border-white/50">
-            <div class="flex gap-2 overflow-x-auto pb-3 no-scrollbar mask-gradient-right">
-              <button v-for="q in suggestedQuestions" :key="q" @click="askAi(q)" :disabled="aiLoading"
-                class="flex-shrink-0 text-[11px] px-3 py-1.5 bg-white/80 text-slate-600 font-medium rounded-full border border-slate-200/60 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition shadow-sm active:scale-95">
+          <div class="p-4 bg-white border-t border-slate-100">
+            <div class="flex gap-2 overflow-x-auto pb-3 no-scrollbar">
+              <button v-for="q in suggestedQuestions" :key="q" @click="askAi(q)" :disabled="aiLoading || aiTyping"
+                class="flex-shrink-0 text-[11px] px-3 py-1.5 bg-slate-50 text-slate-600 rounded-full border border-slate-200 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition disabled:opacity-50">
                 {{ q }}
               </button>
             </div>
-            <div class="relative group">
-              <input @keyup.enter="askAi($event.target.value); $event.target.value = ''" placeholder="Ask Siri..."
-                class="w-full bg-white/50 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-cyan-400/30 transition shadow-inner placeholder:text-slate-400">
+            <div class="relative">
+              <input @keyup.enter="askAi($event.target.value); $event.target.value = ''"
+                :disabled="aiLoading || aiTyping" placeholder="问点什么..."
+                class="w-full bg-slate-100 rounded-xl pl-4 pr-11 py-3 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition disabled:opacity-60 placeholder:text-slate-400">
               <button
-                class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-blue-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 hover:scale-105 active:scale-95 transition">↑</button>
+                class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white shadow-md hover:bg-blue-600 active:scale-95 transition disabled:bg-slate-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
       </transition>
 
-      <button @click="toggleChat" class="pointer-events-auto relative w-16 h-16 group outline-none">
-        <div
-          class="absolute inset-0 rounded-full siri-gradient opacity-80 blur-lg animate-pulse-slow group-hover:opacity-100 transition-opacity">
-        </div>
-
-        <div
-          class="absolute inset-1 rounded-full siri-gradient border border-white/20 shadow-[inset_0_2px_10px_rgba(255,255,255,0.4)] flex items-center justify-center z-10 overflow-hidden backdrop-blur-sm group-active:scale-95 transition-transform duration-200">
-          <div
-            class="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent w-[200%] h-[200%] animate-shimmer">
-          </div>
-
-          <span v-if="!showAiChat" class="text-2xl drop-shadow-md relative z-20">🤖</span>
-          <span v-else class="text-xl font-bold text-white drop-shadow-md relative z-20">✕</span>
-        </div>
+      <button @click="toggleChat"
+        class="pointer-events-auto w-14 h-14 rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-900/40 flex items-center justify-center hover:scale-105 hover:bg-blue-600 active:scale-95 transition-all duration-300 group z-50">
+        <span v-if="!showAiChat" class="text-2xl group-hover:rotate-12 transition-transform">💬</span>
+        <span v-else class="text-xl font-bold">✕</span>
       </button>
 
     </div>
@@ -456,87 +423,57 @@ watch(() => route.params.id, () => { window.location.reload() })
 </template>
 
 <style scoped>
-/* Siri 核心渐变 */
-.siri-gradient {
-  background: linear-gradient(135deg, #22d3ee, #3b82f6, #a855f7, #ec4899);
-  background-size: 300% 300%;
-  animation: gradientMove 6s ease infinite;
+.chat-pop-enter-active,
+.chat-pop-leave-active {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* 毛玻璃面板背景 */
-.siri-glass-panel {
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+.chat-pop-enter-from,
+.chat-pop-leave-to {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
 }
 
-@keyframes gradientMove {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
+:deep(.markdown-body p) {
+  margin-bottom: 0.5em;
 }
 
-@keyframes pulse-slow {
-
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.6;
-  }
-
-  50% {
-    transform: scale(1.15);
-    opacity: 0.9;
-  }
+:deep(.markdown-body p:last-child) {
+  margin-bottom: 0;
 }
 
-@keyframes shimmer {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
+:deep(.markdown-body ul) {
+  list-style-type: disc;
+  padding-left: 1.2em;
+  margin-bottom: 0.5em;
 }
 
-/* 思考波形动画 */
-@keyframes wave {
-
-  0%,
-  100% {
-    height: 8px;
-  }
-
-  50% {
-    height: 20px;
-  }
+:deep(.markdown-body ol) {
+  list-style-type: decimal;
+  padding-left: 1.2em;
+  margin-bottom: 0.5em;
 }
 
-.animate-wave {
-  animation: wave 1s ease-in-out infinite;
+:deep(.markdown-body strong) {
+  font-weight: 700;
+  color: #1e293b;
 }
 
-/* 自定义滚动条 */
+:deep(.markdown-body li) {
+  margin-bottom: 0.2em;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.5);
+  background-color: rgba(203, 213, 225, 0.5);
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background-color: transparent;
+  background: transparent;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -548,15 +485,15 @@ watch(() => route.params.id, () => { window.location.reload() })
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
 }
 
-.shadow-price-card {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-}
-
 .stat-label {
   @apply text-[10px] text-slate-400 uppercase tracking-widest mb-1;
 }
 
 .stat-value {
   @apply font-bold text-slate-800 text-sm;
+}
+
+.shadow-price-card {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 </style>

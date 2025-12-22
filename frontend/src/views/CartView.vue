@@ -206,7 +206,6 @@ onMounted(() => {
 
           <div v-if="recommendations.length > 0" class="mt-12">
             <div class="flex items-center gap-2 mb-4">
-              <span class="text-lg">🔥</span>
               <h3 class="font-bold text-slate-800">猜你喜欢</h3>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">

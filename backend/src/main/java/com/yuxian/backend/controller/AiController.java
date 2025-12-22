@@ -16,11 +16,16 @@ public class AiController {
     }
 
     @PostMapping("/ask")
-    public ResponseEntity<Map<String, String>> askChef(@RequestBody Map<String, String> payload) {
-        String productName = payload.get("productName");
+    public ResponseEntity<Map<String, String>> askAi(@RequestBody Map<String, String> payload) {
+
+        String productName = payload.getOrDefault("productName", "");
         String question = payload.get("question");
 
-        String answer = geminiService.getRecipeAdvice(productName, question);
+        if (question == null || question.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("answer", "请先说出您的问题哦~"));
+        }
+
+        String answer = geminiService.getAiResponse(productName, question);
 
         return ResponseEntity.ok(Map.of("answer", answer));
     }

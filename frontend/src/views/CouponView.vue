@@ -40,10 +40,9 @@ const useCoupon = (coupon) => {
     router.push('/cart')
 }
 
-// 亮色系高饱和渐变主题
 const getCardTheme = (type) => {
-    if (type === 'EXCHANGE') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-pink-500 shadow-orange-500/30' // 尊贵流光金
-    return 'bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 shadow-blue-500/30' // 科技极光蓝
+    if (type === 'EXCHANGE') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-pink-500 shadow-orange-500/30'
+    return 'bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 shadow-blue-500/30'
 }
 </script>
 
@@ -190,31 +189,26 @@ const getCardTheme = (type) => {
 </template>
 
 <style scoped>
-/* 定义缓动曲线 */
 .cubic-bezier { transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
 
-/* 流光动画 */
 @keyframes shine {
     0% { transform: translateX(-150%) skewX(-20deg); }
     100% { transform: translateX(200%) skewX(-20deg); }
 }
 .group-hover\:animate-shine:hover { animation: shine 0.7s ease-in-out; }
 
-/* 浮动动画 */
 @keyframes float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-12px); }
 }
 .animate-float { animation: float 4s ease-in-out infinite; }
 
-/* 扫描线 */
 @keyframes scan {
     0% { top: -10%; }
     100% { top: 110%; }
 }
 .group-hover\:animate-scan:hover { animation: scan 1.5s linear infinite; }
 
-/* 呼吸 */
 @keyframes pulse-slow {
     0%, 100% { opacity: 0.3; transform: scale(1); }
     50% { opacity: 0.6; transform: scale(1.1); }

@@ -391,10 +391,9 @@ const getTagColor = (tag) => {
                     - ¥{{ c.amount }} : {{ c.couponName }} (满{{ c.minSpend }}可用)
                   </option>
                 </select>
-                <div class="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🎁</div>
                 <div class="absolute right-4 top-1/2 -translate-y-1/2 text-orange-400 text-xs">▼</div>
                 <p v-if="selectedCoupon"
-                  class="text-xs text-orange-600 mt-2 font-bold flex items-center gap-1 animate-pulse pl-1">🎉 已成功抵扣 ¥{{
+                  class="text-xs text-orange-600 mt-2 font-bold flex items-center gap-1 animate-pulse pl-1">已成功抵扣 ¥{{
                     selectedCoupon.amount }}</p>
               </div>
               <div v-else
