@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional // 测试结束后自动回滚数据库，保持环境干净
+@Transactional
 public class IntegrationTest {
 
     @Autowired
@@ -43,7 +43,6 @@ public class IntegrationTest {
 
     @BeforeEach
     void setup() throws Exception {
-        // 1. 初始化一个测试用户
         String username = "integrationUser";
         if (userRepository.findByUsername(username) == null) {
             User user = new User();
@@ -53,18 +52,13 @@ public class IntegrationTest {
             user.setRole("USER");
             userRepository.save(user);
         }
-
-        // 2. 模拟登录获取 Token (如果是 JWT 验证)
-        // 这里简化处理，假设你有一个 Login 接口。
-        // 如果无法模拟 Login，也可以使用 @WithMockUser(username="integrationUser") 注解跳过登录
     }
 
     @Test
     void testCreateOrderFlow() throws Exception {
-        // 构造下单请求数据
         Map<String, Object> request = new HashMap<>();
         request.put("username", "integrationUser");
-        
+
         Address address = new Address();
         address.setContact("Test Contact");
         address.setPhone("13812345678");
@@ -73,15 +67,14 @@ public class IntegrationTest {
 
         List<Map<String, Object>> items = new ArrayList<>();
         Map<String, Object> item = new HashMap<>();
-        item.put("id", 1); // 假设数据库里 ID 1 的商品存在
+        item.put("id", 1);
         item.put("quantity", 1);
         items.add(item);
         request.put("items", items);
 
-        // 发送下单请求
         mockMvc.perform(post("/api/orders/create")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk()); // 期望返回 200 OK
+                .andExpect(status().isOk());
     }
 }

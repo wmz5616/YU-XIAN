@@ -1,24 +1,63 @@
-describe('管理员后台测试', () => {
-  it('管理员应能处理售后申请', () => {
-    // 1. 管理员登录
-    cy.visit('/login');
-    cy.get('input[placeholder*="用户名"]').type('admin'); // 确保数据库有 ROLE="ADMIN" 的用户
-    cy.get('input[placeholder*="密码"]').type('123');
-    cy.contains('button', '登录').click();
+describe("管理员后台测试", () => {
+  const admin = { username: "admin", password: "123", role: "ADMIN" };
 
-    // 2. 进入后台
-    cy.contains('进入后台').click();
-    cy.url().should('include', '/admin');
+  const mockRefund = {
+    id: 999,
+    orderId: 8888,
+    username: "testUser",
+    reason: "不喜欢，要求退款",
+    status: "PENDING",
+    amount: 100.0,
+    createTime: "2025-01-01T12:00:00",
+  };
 
-    // 3. 进入售后管理
-    cy.visit('/admin/refund');
-    
-    // 4. 验证是否有待处理的售后 (假设有数据)
-    // 如果没有数据，我们可以断言"暂无售后申请"的提示，或者断言表格存在
-    cy.get('table').should('exist');
-    
-    // 模拟点击通过审核 (如果页面有按钮)
-    // cy.contains('button', '通过').first().click();
-    // cy.contains('审核通过').should('be.visible');
+  beforeEach(() => {
+    cy.request({
+      method: "POST",
+      url: "/api/users/register",
+      failOnStatusCode: false,
+      body: admin,
+    });
+    cy.login(admin.username, admin.password);
+
+    cy.window().then((win) => win.localStorage.setItem("role", "ADMIN"));
+  });
+
+  it("管理员应能处理售后申请", () => {
+    cy.intercept("GET", "/api/admin/stats", {
+      totalSales: 9999,
+      pendingOrders: 5,
+    }).as("getStats");
+    cy.intercept("GET", "/api/admin/orders*", {
+      content: [],
+      totalElements: 0,
+    }).as("getOrders");
+
+    cy.intercept("GET", "/api/orders/admin/refunds", [mockRefund]).as(
+      "getRefunds"
+    );
+
+    cy.intercept("POST", "/api/orders/admin/refunds/*/audit", {
+      statusCode: 200,
+      body: { success: true },
+    }).as("auditRefund");
+
+    cy.wait(["@getStats", "@getOrders"]);
+
+    cy.contains("aside nav a", "售后处理").click();
+
+    cy.wait("@getRefunds");
+
+    cy.contains(mockRefund.reason).should("be.visible");
+    cy.contains("待处理").should("be.visible");
+
+    cy.contains("tr", mockRefund.username).within(() => {
+      cy.contains("同意").click();
+    });
+
+    cy.get(".swal2-confirm").click();
+
+    cy.wait("@auditRefund");
+    cy.contains("已同意退款").should("be.visible");
   });
 });

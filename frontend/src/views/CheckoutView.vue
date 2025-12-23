@@ -283,11 +283,11 @@ const getTagColor = (tag) => {
             <div class="flex p-1 bg-slate-100 rounded-xl mb-6">
               <button @click="addressMode = 'map'"
                 :class="['flex-1 py-2 text-sm font-bold rounded-lg transition-all', addressMode === 'map' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500']">
-                📍 智能定位
+                智能定位
               </button>
               <button @click="addressMode = 'manual'"
                 :class="['flex-1 py-2 text-sm font-bold rounded-lg transition-all', addressMode === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500']">
-                📝 手动输入
+                手动输入
               </button>
             </div>
 

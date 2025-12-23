@@ -661,7 +661,6 @@ const getStatusColor = (s) => {
 </template>
 
 <style>
-/* 强制隐藏高德地图生成的干扰元素 */
 .amap-logo,
 .amap-copyright,
 .amap-geolocation-con,
@@ -673,7 +672,6 @@ const getStatusColor = (s) => {
   height: 0 !important;
 }
 
-/* 隐藏可能注入的 iframe */
 iframe[id^="amap"] {
   display: none !important;
   width: 0 !important;
@@ -687,7 +685,6 @@ iframe[id^="amap"] {
 </style>
 
 <style scoped>
-/* 您的原有样式保持不变 */
 .bg-aurora {
   background: linear-gradient(-45deg, #0f172a, #1e3a8a, #0ea5e9, #0f172a);
   background-size: 400% 400%;
