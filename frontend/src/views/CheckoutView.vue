@@ -23,6 +23,22 @@ const loading = ref(false)
 
 const availableCoupons = ref([]);
 const selectedCouponId = ref(null);
+const isCouponDropdownOpen = ref(false);
+
+const toggleCouponDropdown = () => isCouponDropdownOpen.value = !isCouponDropdownOpen.value;
+const selectCoupon = (coupon) => {
+    selectedCouponId.value = coupon ? coupon.id : null;
+    isCouponDropdownOpen.value = false;
+}
+
+onMounted(() => {
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        if (!target.closest('.relative.group')) {
+            isCouponDropdownOpen.value = false;
+        }
+    })
+})
 
 const myAddresses = computed(() => store.currentUser?.addresses || [])
 const cartItems = computed(() => store.cart || [])
@@ -45,6 +61,12 @@ const finalPrice = computed(() => {
   return total > 0 ? total.toFixed(2) : '0.00';
 });
 
+const canPayWithBalance = computed(() => {
+    const balance = parseFloat(store.currentUser?.balance || 0);
+    const price = parseFloat(finalPrice.value);
+    return balance >= price;
+});
+
 const fetchCoupons = async () => {
   try {
     const username = store.currentUser?.username;
@@ -63,12 +85,28 @@ const fetchCoupons = async () => {
       return isUnused && isThresholdMet;
     });
 
+
+
     if (availableCoupons.value.length > 0) {
       availableCoupons.value.sort((a, b) => b.amount - a.amount);
-      if (!selectedCouponId.value) selectedCouponId.value = availableCoupons.value[0].id;
+      if (!selectedCouponId.value) {
+          selectedCouponId.value = availableCoupons.value[0].id;
+      }
     }
   } catch (e) { console.error(e); }
 };
+
+const groupedCoupons = computed(() => {
+    const groups = new Map();
+    for (const c of availableCoupons.value) {
+        const key = c.couponId || `${c.amount}_${c.couponName}`;
+        if (!groups.has(key)) {
+            groups.set(key, { ...c, count: 0 });
+        }
+        groups.get(key).count++;
+    }
+    return Array.from(groups.values()).sort((a, b) => b.amount - a.amount);
+});
 
 watch(subTotal, () => {
   fetchCoupons();
@@ -112,7 +150,8 @@ const locateUser = () => {
 
         const geocoder = new AMap.Geocoder({
           radius: 1000,
-          extensions: 'all'
+          extensions: 'all',
+          timeout: 20000
         })
 
         geocoder.getAddress(result.position, function (status, data) {
@@ -124,8 +163,8 @@ const locateUser = () => {
             store.showNotification('定位成功')
           } else {
             console.error('逆地理编码失败:', status, data)
-            newAddress.detail = `(已定位到经纬度: ${result.position}, 但地址解析超时)`
-            store.showNotification('地址解析失败，请手动补充', 'warning')
+            newAddress.detail = `(已定位到经纬度: ${result.position}, 但地址获取失败，请手动输入)`
+            store.showNotification('地址解析失败 (可能因网络原因)，请手动补充', 'warning')
           }
         })
 
@@ -163,7 +202,7 @@ const saveAddress = async () => {
       method: 'POST',
       body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
     })
-    store.login(updatedUser)
+    store.login(updatedUser, true)
     showAddressModal.value = false
     if (isFirst && store.currentUser.addresses.length > 0) {
       selectedAddressId.value = store.currentUser.addresses.find(a =>
@@ -273,64 +312,66 @@ const getTagColor = (tag) => {
         <h1 class="text-2xl font-bold text-slate-800">确认订单</h1>
       </div>
 
-      <Transition name="fade">
-        <div v-if="showAddressModal"
-          class="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div
-            class="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl animate-scale-up border border-slate-100 flex flex-col max-h-[90vh]">
-            <h3 class="text-xl font-bold mb-4 text-slate-900">添加收货地址</h3>
-
-            <div class="flex p-1 bg-slate-100 rounded-xl mb-6">
-              <button @click="addressMode = 'map'"
-                :class="['flex-1 py-2 text-sm font-bold rounded-lg transition-all', addressMode === 'map' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500']">
-                智能定位
-              </button>
-              <button @click="addressMode = 'manual'"
-                :class="['flex-1 py-2 text-sm font-bold rounded-lg transition-all', addressMode === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500']">
-                手动输入
-              </button>
-            </div>
-
-            <div class="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
-              <input v-model="newAddress.contact" placeholder="联系人姓名" class="input-field-glass">
-              <input v-model="newAddress.phone" placeholder="手机号码" class="input-field-glass">
-
-              <div class="relative">
-                <textarea v-model="newAddress.detail"
-                  :placeholder="addressMode === 'map' ? '点击右侧定位图标获取地址，或切换手动输入' : '请输入省/市/区/街道/门牌号'"
-                  class="input-field-glass resize-none h-24 pt-3 pr-16"></textarea>
-
-                <button v-if="addressMode === 'map'" @click="locateUser"
-                  class="absolute right-3 top-3 z-10 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold flex items-center gap-1 hover:bg-blue-100 transition"
-                  :disabled="isLocating">
-                  <span v-if="isLocating" class="animate-bounce">
-                    <img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位中" />
-                  </span>
-                  <span v-else>
-                    <img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位" />
-                  </span>
-                  <span>{{ isLocating ? '定位中...' : '定位' }}</span>
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showAddressModal"
+            class="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div
+              class="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl animate-scale-up border border-slate-100 flex flex-col max-h-[90vh]">
+              <h3 class="text-xl font-bold mb-4 text-slate-900">添加收货地址</h3>
+  
+              <div class="flex p-1 bg-slate-100 rounded-xl mb-6">
+                <button @click="addressMode = 'map'"
+                  :class="['flex-1 py-2 text-sm font-bold rounded-lg transition-all', addressMode === 'map' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500']">
+                  智能定位
+                </button>
+                <button @click="addressMode = 'manual'"
+                  :class="['flex-1 py-2 text-sm font-bold rounded-lg transition-all', addressMode === 'manual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500']">
+                  手动输入
                 </button>
               </div>
-
-              <div class="flex gap-3 pt-2">
-                <span class="text-xs font-bold text-slate-500 py-2.5">标签:</span>
-                <button v-for="tag in ['家', '公司', '学校']" :key="tag" @click="newAddress.tag = tag"
-                  :class="`tag-btn ${newAddress.tag === tag ? 'active' : ''}`">
-                  {{ tag }}
-                </button>
+  
+              <div class="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
+                <input v-model="newAddress.contact" placeholder="联系人姓名" class="input-field-glass">
+                <input v-model="newAddress.phone" placeholder="手机号码" class="input-field-glass">
+  
+                <div class="relative">
+                  <textarea v-model="newAddress.detail"
+                    :placeholder="addressMode === 'map' ? '点击右侧定位图标获取地址，或切换手动输入' : '请输入省/市/区/街道/门牌号'"
+                    class="input-field-glass resize-none h-24 pt-3 pr-16"></textarea>
+  
+                  <button v-if="addressMode === 'map'" @click="locateUser"
+                    class="absolute right-3 top-3 z-10 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold flex items-center gap-1 hover:bg-blue-100 transition"
+                    :disabled="isLocating">
+                    <span v-if="isLocating" class="animate-bounce">
+                      <img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位中" />
+                    </span>
+                    <span v-else>
+                      <img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位" />
+                    </span>
+                    <span>{{ isLocating ? '定位中...' : '定位' }}</span>
+                  </button>
+                </div>
+  
+                <div class="flex gap-3 pt-2">
+                  <span class="text-xs font-bold text-slate-500 py-2.5">标签:</span>
+                  <button v-for="tag in ['家', '公司', '学校']" :key="tag" @click="newAddress.tag = tag"
+                    :class="`tag-btn ${newAddress.tag === tag ? 'active' : ''}`">
+                    {{ tag }}
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div class="mt-8 flex gap-4">
-              <button @click="showAddressModal = false"
-                class="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-medium transition">取消</button>
-              <button @click="saveAddress"
-                class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition active:scale-95">保存地址</button>
+  
+              <div class="mt-8 flex gap-4">
+                <button @click="showAddressModal = false"
+                  class="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-medium transition">取消</button>
+                <button @click="saveAddress"
+                  class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition active:scale-95">保存地址</button>
+              </div>
             </div>
           </div>
-        </div>
-      </Transition>
+        </Transition>
+      </Teleport>
 
       <div class="flex flex-col lg:flex-row gap-8">
 
@@ -373,7 +414,7 @@ const getTagColor = (tag) => {
           </div>
 
           <div
-            class="bg-white/70 backdrop-blur-xl rounded-3xl p-6 border border-white/50 shadow-sm relative overflow-hidden">
+            class="bg-white/70 backdrop-blur-xl rounded-3xl p-6 border border-white/50 shadow-sm relative z-30">
             <div
               class="absolute -right-10 -top-10 w-32 h-32 bg-orange-100 rounded-full blur-2xl opacity-50 pointer-events-none">
             </div>
@@ -384,22 +425,41 @@ const getTagColor = (tag) => {
             </h2>
             <div class="relative z-10">
               <div v-if="availableCoupons.length > 0" class="relative group">
-                <select v-model="selectedCouponId"
-                  class="w-full p-4 pl-12 border border-orange-200 rounded-xl bg-gradient-to-r from-orange-50/50 to-white text-slate-700 outline-none focus:ring-2 focus:ring-orange-300 appearance-none cursor-pointer font-medium shadow-sm transition-all hover:border-orange-300">
-                  <option :value="null">不使用优惠券</option>
-                  <option v-for="c in availableCoupons" :key="c.id" :value="c.id">
-                    - ¥{{ c.amount }} : {{ c.couponName }} (满{{ c.minSpend }}可用)
-                  </option>
-                </select>
-                <div class="absolute right-4 top-1/2 -translate-y-1/2 text-orange-400 text-xs">▼</div>
-                <p v-if="selectedCoupon"
-                  class="text-xs text-orange-600 mt-2 font-bold flex items-center gap-1 animate-pulse pl-1">已成功抵扣 ¥{{
-                    selectedCoupon.amount }}</p>
+                <div @click.stop="toggleCouponDropdown" 
+                  class="w-full p-4 pl-12 border border-orange-200 rounded-xl bg-gradient-to-r from-orange-50/50 to-white text-slate-700 font-medium shadow-sm transition-all hover:border-orange-300 cursor-pointer relative flex justify-between items-center group-hover:shadow-md">
+                   <div v-if="selectedCoupon" class="flex flex-col">
+                      <span class="text-orange-600 font-bold text-lg">¥{{ selectedCoupon.amount }} <span class="text-xs font-normal text-slate-500 ml-1">{{ selectedCoupon.name }}</span></span>
+                      <span class="text-[10px] text-slate-400">已抵扣 ¥{{ selectedCoupon.amount }}</span>
+                   </div>
+                   <div v-else class="text-slate-500 font-medium">不使用优惠券</div>
+                   <div class="text-orange-400 text-xs transition-transform duration-300" :class="{ 'rotate-180': isCouponDropdownOpen }">▼</div>
+                </div>
+
+                <div v-if="isCouponDropdownOpen" 
+                  class="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl shadow-orange-100/50 border border-orange-100 p-2 z-50 animate-fade-in-up origin-top">
+                   <div @click="selectCoupon(null)" class="p-3 rounded-xl hover:bg-slate-50 cursor-pointer text-slate-500 font-medium text-sm transition">
+                      不使用优惠券
+                   </div>
+                   <div v-for="c in groupedCoupons" :key="c.id" @click="selectCoupon(c)"
+                      class="p-3 rounded-xl hover:bg-orange-50 cursor-pointer flex justify-between items-center group/item transition border border-transparent hover:border-orange-100 mb-1 last:mb-0">
+                      <div class="flex flex-col">
+                         <span class="text-orange-600 font-bold">¥{{ c.amount }} 
+                             <span class="text-slate-600 text-xs font-normal ml-1">{{ c.couponName }}</span>
+                             <span v-if="c.count > 1" class="ml-2 bg-orange-100 text-orange-600 text-[10px] px-1.5 py-0.5 rounded-md font-bold">x{{ c.count }}</span>
+                         </span>
+                         <span class="text-[10px] text-slate-400">满 ¥{{ c.minSpend }} 可用</span>
+                      </div>
+                      <div class="w-5 h-5 rounded-full border border-orange-200 flex items-center justify-center text-orange-500 opacity-0 group-hover/item:opacity-100 transition-opacity" 
+                           :class="{ '!opacity-100 bg-orange-500 text-white border-transparent': selectedCoupon && selectedCoupon.couponId === c.couponId }">
+                         ✓
+                      </div>
+                   </div>
+                </div>
               </div>
               <div v-else
                 class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
                 <span class="grayscale text-xl"><img src="/icons/nocode.png" class="w-5 h-5 object-contain"
-                    alt="微信" /></span><span class="text-sm italic">暂无可用优惠券 (需满足使用门槛)</span>
+                    alt="无优惠券" /></span><span class="text-sm italic">暂无可用优惠券 (需满足使用门槛)</span>
               </div>
             </div>
           </div>
@@ -429,6 +489,27 @@ const getTagColor = (tag) => {
                 </div>
                 <img src="/icons/wechatpay.png" class="w-8 h-8 object-contain" alt="微信支付" />
                 <span class="font-bold text-slate-700">微信支付</span>
+              </div>
+
+              <div @click="canPayWithBalance && (paymentMethod = 'balance')"
+                class="col-span-2 flex items-center justify-between px-5 py-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-md relative overflow-hidden"
+                :class="paymentMethod === 'balance' ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100 bg-white hover:border-slate-200'"
+                :style="(!canPayWithBalance) ? 'opacity: 0.6; cursor: not-allowed;' : ''">
+                
+                <div class="flex items-center gap-3">
+                   <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">¥</div>
+                   <div>
+                       <div class="font-bold text-slate-800">余额支付</div>
+                       <div class="text-xs text-slate-500">可用余额: ¥{{ parseFloat(store.currentUser?.balance || 0).toFixed(2) }}</div>
+                   </div>
+                </div>
+
+                <div v-if="paymentMethod === 'balance'" class="text-indigo-600 font-bold text-sm flex items-center gap-1">
+                   ✓ <span class="text-xs">已选择</span>
+                </div>
+                <div v-if="!canPayWithBalance" class="text-red-500 text-xs font-bold bg-red-50 px-2 py-1 rounded-full">
+                    余额不足
+                </div>
               </div>
             </div>
           </div>

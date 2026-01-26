@@ -33,10 +33,18 @@ public class WebSocketServer {
     private Session session;
     private boolean isAdmin = false;
 
+    private static java.util.concurrent.ConcurrentHashMap<String, Session> userSessionMap = new java.util.concurrent.ConcurrentHashMap<>();
+
     @OnOpen
     public void onOpen(Session session) {
         this.session = session;
         this.isAdmin = checkAdminRole(session);
+
+        String username = getUsernameFromToken(session);
+        if (username != null) {
+            userSessionMap.put(username, session);
+            System.out.println("【WebSocket】用户上线: " + username);
+        }
 
         webSocketSet.add(this);
         System.out.println("【WebSocket】有新的连接，是否管理员: " + isAdmin + "，当前在线人数：" + webSocketSet.size());
@@ -44,19 +52,15 @@ public class WebSocketServer {
 
     @OnClose
     public void onClose() {
+        String username = getUsernameFromToken(this.session);
+        if (username != null) {
+            userSessionMap.remove(username);
+        }
         webSocketSet.remove(this);
         System.out.println("【WebSocket】连接断开，当前在线人数：" + webSocketSet.size());
     }
 
-    @OnMessage
-    public void onMessage(String message, Session session) {
-        System.out.println("【WebSocket】收到客户端消息：" + message);
-    }
-
-    @OnError
-    public void onError(Session session, Throwable error) {
-        error.printStackTrace();
-    }
+    // ... onMessage, onError unchanged ...
 
     public static void sendInfo(String message) {
         for (WebSocketServer item : webSocketSet) {
@@ -70,18 +74,36 @@ public class WebSocketServer {
         }
     }
 
-    private boolean checkAdminRole(Session session) {
+    public static void sendToUser(String username, String message) {
+        Session userSession = userSessionMap.get(username);
+        if (userSession != null && userSession.isOpen()) {
+            try {
+                userSession.getBasicRemote().sendText(message);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private String getUsernameFromToken(Session session) {
         try {
             String queryString = session.getQueryString();
             if (queryString != null && queryString.contains("token=")) {
                 String token = queryString.split("token=")[1].split("&")[0];
+                return jwtUtils.validateToken(token);
+            }
+        } catch (Exception e) {
+        }
+        return null;
+    }
 
-                String username = jwtUtils.validateToken(token);
-                if (username != null) {
-                    User user = userRepository.findByUsername(username);
-                    if (user != null && "ADMIN".equals(user.getRole())) {
-                        return true;
-                    }
+    private boolean checkAdminRole(Session session) {
+        try {
+            String username = getUsernameFromToken(session);
+            if (username != null) {
+                User user = userRepository.findByUsername(username);
+                if (user != null && "ADMIN".equals(user.getRole())) {
+                    return true;
                 }
             }
         } catch (Exception e) {

@@ -9,7 +9,16 @@ const router = useRouter()
 const loading = ref(false)
 const isSigned = ref(false)
 
-const pointLogs = ref(store.pointLogs || [])
+const pointLogs = ref([])
+
+const fetchLogs = async () => {
+    try {
+        const res = await request.get('/api/users/point-logs')
+        pointLogs.value = res || []
+    } catch (e) {
+        console.error(e)
+    }
+}
 
 const exchangeableCoupons = ref([
     { id: 101, amount: 5, cost: 500, name: '无门槛立减券', color: 'from-orange-400 to-red-500' },
@@ -22,6 +31,9 @@ onMounted(() => {
     const today = new Date().toLocaleDateString()
     const lastSign = localStorage.getItem(`sign_date_${store.currentUser?.username}`)
     if (lastSign === today) isSigned.value = true
+    if (store.currentUser) {
+        fetchLogs()
+    }
 })
 
 const handleExchange = async (item) => {
@@ -50,24 +62,14 @@ const handleExchange = async (item) => {
         loading.value = true;
         try {
             const res = await request.post('/api/coupons/exchange', {
-                username: store.currentUser.username,
-                amount: item.amount,
-                cost: item.cost,
-                name: item.name
+                exchangeId: item.id
             });
 
             if (res && res.success) {
                 store.currentUser.points = res.points;
-                store.login(store.currentUser);
-                store.addPointLog({
-                    type: 'expense',
-                    title: `兑换: ${item.name}`,
-                    amount: item.cost
-                });
-                store.addCoupon({
-                    name: item.name,
-                    amount: item.amount
-                });
+                store.login(store.currentUser, true);
+                
+                await fetchLogs();
 
                 Swal.fire('兑换成功', '优惠券已发放', 'success');
             }
@@ -79,18 +81,28 @@ const handleExchange = async (item) => {
     }
 }
 
-const handleSignIn = () => {
+const handleSignIn = async () => {
     if (!store.currentUser) return router.push('/login');
 
-    isSigned.value = true;
-    localStorage.setItem(`sign_date_${store.currentUser.username}`, new Date().toLocaleDateString());
+    loading.value = true;
+    try {
+        const res = await request.post('/api/users/signin');
+        if (res && res.success) {
+            isSigned.value = true;
+            localStorage.setItem(`sign_date_${store.currentUser.username}`, new Date().toLocaleDateString());
+            
+            store.currentUser.points = res.points;
+            store.login(store.currentUser, true);
+            
+            await fetchLogs();
 
-    const reward = 10;
-    store.currentUser.points = (store.currentUser.points || 0) + reward;
-    store.login(store.currentUser);
-
-    store.addPointLog({ type: 'income', title: '每日签到', amount: reward });
-    Swal.fire('签到成功', `获得 ${reward} 积分`, 'success');
+            Swal.fire('签到成功', `获得 ${res.reward} 积分`, 'success');
+        }
+    } catch (e) {
+        Swal.fire('签到失败', e.message || '系统繁忙', 'error');
+    } finally {
+        loading.value = false;
+    }
 }
 </script>
 
@@ -170,37 +182,53 @@ const handleSignIn = () => {
              
              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div v-for="item in exchangeableCoupons" :key="item.id" 
-                  v-tilt="{ speed: 500, max: 10, glare: true, 'max-glare': 0.3 }"
-                  class="group relative bg-white rounded-[24px] p-1 shadow-sm transition-all duration-300 border border-slate-100 overflow-hidden cursor-default"
-                  :class="item.shadow"
+                  v-tilt="{ speed: 1000, max: 5, glare: true, 'max-glare': 0.1, scale: 1.02 }"
+                  class="group relative bg-white rounded-[24px] shadow-lg shadow-slate-100 hover:shadow-xl transition-all duration-500 overflow-hidden border border-slate-100"
                 >
-                  <div class="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br" :class="item.color"></div>
+                  <div class="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl opacity-10 group-hover:opacity-20 transition-opacity bg-gradient-to-br" :class="item.color"></div>
 
-                  <div class="relative bg-white rounded-[20px] p-5 h-full flex flex-col z-10">
-                    <div class="flex justify-between items-start mb-4">
-                      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br flex items-center justify-center text-white shadow-lg transform group-hover:scale-110 transition-transform duration-300" :class="item.color">
-                        <span class="font-bold text-lg">¥</span>
+                  <div class="p-6 relative z-10">
+                    <div class="flex justify-between items-start mb-6">
+                      <div class="w-14 h-14 rounded-2xl bg-gradient-to-br flex items-center justify-center text-white shadow-lg shadow-indigo-100 transform group-hover:scale-110 transition-all duration-500" :class="item.color">
+                        <span class="font-serif-sc font-black text-2xl">¥</span>
                       </div>
+                      
                       <div class="text-right">
-                         <div class="font-black text-2xl text-slate-800 font-serif-sc">¥{{ item.amount }}</div>
-                         <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Coupon</div>
+                         <div class="text-4xl font-black text-slate-800 font-serif-sc tracking-tight leading-none group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-br transition-all" :class="item.color">
+                            {{ item.amount }}
+                         </div>
+                         <div class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mt-1">Coupon</div>
                       </div>
                     </div>
-                    
-                    <h4 class="font-bold text-slate-700 text-lg mb-1">{{ item.name }}</h4>
-                    <p class="text-xs text-slate-400 mb-6">满 ¥{{ item.amount * 10 }} 可用</p>
 
-                    <div class="mt-auto flex items-center justify-between border-t border-slate-50 pt-4">
-                       <div class="text-cyan-600 font-bold font-mono flex items-center gap-1">
-                          <span class="text-lg">{{ item.cost }}</span>
-                          <span class="text-[10px] text-slate-400 font-sans uppercase">Points</span>
-                       </div>
-                       <button @click.stop="handleExchange(item)" :disabled="loading || (store.currentUser?.points || 0) < item.cost"
-                          class="px-5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-lg shadow-slate-200 hover:bg-cyan-500 hover:shadow-cyan-200 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:bg-slate-300"
-                       >
-                          兑换
-                       </button>
+                    <div class="mb-4">
+                        <h4 class="font-bold text-slate-800 text-lg mb-1 leading-tight">{{ item.name }}</h4>
+                        <p class="text-xs text-slate-400 font-medium">满 <span class="text-slate-600 font-bold">¥{{ item.amount * 10 }}</span> 可用</p>
                     </div>
+                  </div>
+
+                  <div class="relative flex items-center justify-between px-4">
+                      <div class="w-4 h-4 rounded-full bg-slate-50 -ml-6 shadow-inner"></div>
+                      <div class="flex-1 border-t-2 border-dashed border-slate-100 h-px"></div>
+                      <div class="w-4 h-4 rounded-full bg-slate-50 -mr-6 shadow-inner"></div>
+                  </div>
+
+                  <div class="p-6 pt-4 flex items-center justify-between bg-slate-50/50 backdrop-blur-sm">
+                       <div>
+                          <div class="text-[10px] text-slate-400 font-bold uppercase mb-0.5">Need</div>
+                          <div class="flex items-baseline gap-1 text-cyan-600 font-black font-mono text-xl">
+                             {{ item.cost }} <span class="text-[10px] font-bold opacity-60">PTS</span>
+                          </div>
+                       </div>
+                       
+                       <button @click.stop="handleExchange(item)" 
+                          :disabled="loading || (store.currentUser?.points || 0) < item.cost"
+                          class="relative overflow-hidden px-6 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-lg hover:shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:bg-slate-300 group/btn"
+                       >
+                          <span class="relative z-10 group-hover/btn:hidden">Redeem</span>
+                          <span class="relative z-10 hidden group-hover/btn:inline-block">兑换</span>
+                          <div class="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-500 opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
+                       </button>
                   </div>
                 </div>
              </div>
@@ -219,25 +247,25 @@ const handleSignIn = () => {
             </div>
 
             <div class="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-              <div v-for="(log, idx) in pointLogs" :key="idx" 
+              <div v-for="(log, idx) in pointLogs" :key="log.id" 
                  class="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-colors group animate-fade-in-right"
                  :style="{ animationDelay: `${idx * 0.05}s` }"
               >
                  <div class="w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm border border-slate-100 group-hover:scale-110 transition-transform"
-                   :class="log.amount > 0 ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'"
+                   :class="log.type === 1 ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'"
                  >
-                   {{ log.amount > 0 ? '🎁' : '🛒' }}
+                   {{ log.type === 1 ? '🎁' : '🛒' }}
                  </div>
                  
                  <div class="flex-1 min-w-0">
-                    <div class="font-bold text-slate-700 text-sm truncate">{{ log.reason || (log.amount > 0 ? '系统赠送' : '商品兑换') }}</div>
-                    <div class="text-[10px] text-slate-400 font-mono">{{ log.date || new Date().toLocaleDateString() }}</div>
+                    <div class="font-bold text-slate-700 text-sm truncate">{{ log.description || (log.type === 1 ? '系统赠送' : '商品兑换') }}</div>
+                    <div class="text-[10px] text-slate-400 font-mono">{{ new Date(log.createTime).toLocaleString() }}</div>
                  </div>
                  
                  <div class="font-black font-mono text-sm"
-                   :class="log.amount > 0 ? 'text-green-500' : 'text-orange-500'"
+                   :class="log.type === 1 ? 'text-green-500' : 'text-orange-500'"
                  >
-                   {{ log.amount > 0 ? '+' : '' }}{{ log.amount }}
+                   {{ log.type === 1 ? '+' : '-' }}{{ log.amount }}
                  </div>
               </div>
             </div>
@@ -255,7 +283,6 @@ const handleSignIn = () => {
 </template>
 
 <style scoped>
-/* 1. 极光背景 */
 .bg-aurora {
   background: linear-gradient(-45deg, #0891b2, #1e3a8a, #0ea5e9, #0f172a);
   background-size: 400% 400%;
@@ -267,22 +294,19 @@ const handleSignIn = () => {
   100% { background-position: 0% 50%; }
 }
 
-/* 2. 玻璃容器 */
 .card-glass {
   @apply rounded-[32px] shadow-2xl shadow-cyan-900/20 text-white;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* 3. 超拟真 3D 水晶球 */
 .crystal-ball {
-  /* 基础玻璃材质 */
   background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0) 100%);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow: 
-    inset 0 0 20px rgba(255, 255, 255, 0.2), /* 内部高光 */
-    inset 0 -10px 20px rgba(0, 0, 0, 0.1), /* 内部阴影 */
-    0 15px 35px rgba(34, 211, 238, 0.3), /* 外部彩色投影 */
+    inset 0 0 20px rgba(255, 255, 255, 0.2),
+    inset 0 -10px 20px rgba(0, 0, 0, 0.1),
+    0 15px 35px rgba(34, 211, 238, 0.3),
     0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
@@ -301,7 +325,6 @@ const handleSignIn = () => {
   animation: spin 6s linear infinite;
 }
 
-/* 4. 文字流光 */
 .shimmer-text {
   background: linear-gradient(110deg, #ffffff 30%, #cffafe 50%, #ffffff 70%);
   background-size: 200% auto;
@@ -320,7 +343,6 @@ const handleSignIn = () => {
   to { transform: rotate(360deg); }
 }
 
-/* 5. 列表交错动画 */
 .animate-fade-in-right {
   animation: fadeInRight 0.5s ease-out forwards;
   opacity: 0;
@@ -330,7 +352,6 @@ const handleSignIn = () => {
   to { opacity: 1; transform: translateX(0); }
 }
 
-/* 基础动画 */
 .animate-fade-down { animation: fadeDown 0.6s ease-out; }
 @keyframes fadeDown {
   from { opacity: 0; transform: translateY(-20px); }

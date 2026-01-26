@@ -35,4 +35,12 @@ public class User {
     private List<Address> addresses;
 
     private Integer points = 0;
+
+    @Column(precision = 19, scale = 2)
+    private java.math.BigDecimal balance = java.math.BigDecimal.ZERO;
+
+    @Version
+    private Integer version = 0;
+
+    private java.time.LocalDate lastSignInDate;
 }

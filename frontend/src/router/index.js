@@ -107,6 +107,12 @@ const router = createRouter({
       name: "orders",
       component: OrdersView,
     },
+    {
+      path: "/wallet",
+      name: "wallet",
+      component: () => import("../views/WalletLogView.vue"),
+      meta: { title: "我的钱包" },
+    },
   ],
 });
 

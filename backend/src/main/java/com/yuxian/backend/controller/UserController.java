@@ -1,6 +1,5 @@
 package com.yuxian.backend.controller;
 
-import com.yuxian.backend.entity.Address;
 import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.UserRepository;
 import org.springframework.web.bind.annotation.*;
@@ -25,11 +24,14 @@ public class UserController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final com.yuxian.backend.repository.PointLogRepository pointLogRepository;
 
-    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtils jwtUtils) {
+    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtils jwtUtils,
+            com.yuxian.backend.repository.PointLogRepository pointLogRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
+        this.pointLogRepository = pointLogRepository;
     }
 
     @PostMapping("/register")
@@ -80,36 +82,87 @@ public class UserController {
     @PostMapping("/address")
     @Transactional
     public ResponseEntity<?> updateAddress(@RequestBody User userWithAddress) {
-        User user = userRepository.findByUsername(userWithAddress.getUsername());
+        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        User user = userRepository.findByUsername(currentUsername);
+
         if (user != null) {
             user.getAddresses().clear();
             if (userWithAddress.getAddresses() != null) {
+                userWithAddress.getAddresses().forEach(addr -> addr.setId(null));
                 user.getAddresses().addAll(userWithAddress.getAddresses());
             }
             User savedUser = userRepository.save(user);
             return ResponseEntity.ok(savedUser);
         }
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在，请重新登录");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在");
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser() {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        User user = userRepository.findByUsername(username);
+
+        if (user != null) {
+            return ResponseEntity.ok(user);
+        }
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在");
+    }
+
+    @PostMapping("/signin")
+    @Transactional
+    public ResponseEntity<?> signIn() {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        User user = userRepository.findByUsername(username);
+
+        if (user == null)
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("用户不存在");
+
+        java.time.LocalDate today = java.time.LocalDate.now();
+        if (today.equals(user.getLastSignInDate())) {
+            return ResponseEntity.badRequest().body("今日已签到");
+        }
+
+        user.setLastSignInDate(today);
+        int reward = 10;
+        user.setPoints((user.getPoints() == null ? 0 : user.getPoints()) + reward);
+        userRepository.save(user);
+
+        com.yuxian.backend.entity.PointLog log = new com.yuxian.backend.entity.PointLog();
+        log.setUsername(username);
+        log.setType(1);
+        log.setAmount(reward);
+        log.setDescription("每日签到奖励");
+        pointLogRepository.save(log);
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("points", user.getPoints());
+        res.put("reward", reward);
+        return ResponseEntity.ok(res);
+    }
+
+    @GetMapping("/point-logs")
+    public ResponseEntity<List<com.yuxian.backend.entity.PointLog>> getPointLogs() {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        return ResponseEntity.ok(pointLogRepository.findByUsernameOrderByCreateTimeDesc(username));
     }
 
     @PostMapping("/upload-avatar")
-    public ResponseEntity<?> uploadAvatar(@RequestParam("username") String username,
-            @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> uploadAvatar(@RequestParam("file") MultipartFile file) {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("文件不能为空");
         }
 
         try {
             String projectPath = System.getProperty("user.dir");
+            String uploadDir = projectPath + File.separator + "uploads" + File.separator + "avatars";
 
-            String staticPath = "/src/main/resources/static/images/avatars/";
-            if (projectPath.endsWith("backend")) {
-                staticPath = "/src/main/resources/static/images/avatars/";
-            } else {
-                staticPath = "/backend/src/main/resources/static/images/avatars/";
-            }
-
-            String uploadDir = projectPath + staticPath;
             File dir = new File(uploadDir);
             if (!dir.exists())
                 dir.mkdirs();
@@ -140,7 +193,20 @@ public class UserController {
     }
 
     @GetMapping("/info")
-    public User getUserInfo(@RequestParam String username) {
-        return userRepository.findByUsername(username);
+    public ResponseEntity<?> getUserInfo(@RequestParam(required = false) String username) {
+        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+
+        if (username != null && !username.isEmpty()) {
+            if (!currentUsername.equals(username)) {
+                User currentUser = userRepository.findByUsername(currentUsername);
+                if (currentUser == null || !"ADMIN".equals(currentUser.getRole())) {
+                    return ResponseEntity.status(403).body("无权查看他人信息");
+                }
+                return ResponseEntity.ok(userRepository.findByUsername(username));
+            }
+        }
+
+        return ResponseEntity.ok(userRepository.findByUsername(currentUsername));
     }
 }

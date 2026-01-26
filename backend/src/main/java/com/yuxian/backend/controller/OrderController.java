@@ -67,7 +67,7 @@ public class OrderController {
     }
 
     @GetMapping("/admin/refunds")
-   @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getPendingRefunds() {
         return ResponseEntity.ok(orderService.getPendingRefundsWithDetails());
     }
@@ -87,9 +87,29 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/pay")
-    public ResponseEntity<String> payOrder(@PathVariable Long id) {
+    public ResponseEntity<String> payOrder(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> payload) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        orderService.payOrder(id, username);
+        String method = (payload != null && payload.get("method") != null) ? payload.get("method") : "NORMAL";
+        orderService.payOrder(id, username, method);
         return ResponseEntity.ok("支付成功");
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteOrder(@PathVariable Long id) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        OrderRecord order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!order.getUsername().equals(username)) {
+            return ResponseEntity.status(403).body("无权删除此订单");
+        }
+
+        if ("售后处理中".equals(order.getStatus())) {
+            return ResponseEntity.badRequest().body("售后处理中的订单不可删除");
+        }
+
+        orderRepository.delete(order);
+        return ResponseEntity.ok("订单已删除");
     }
 }

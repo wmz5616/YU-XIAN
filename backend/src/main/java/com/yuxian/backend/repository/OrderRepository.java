@@ -18,7 +18,8 @@ public interface OrderRepository extends JpaRepository<OrderRecord, Long> {
 
     Page<OrderRecord> findByStatusOrderByCreateTimeDesc(String status, Pageable pageable);
 
-    Page<OrderRecord> findByUsernameContainingAndStatusOrderByCreateTimeDesc(String username, String status, Pageable pageable);
+    Page<OrderRecord> findByUsernameContainingAndStatusOrderByCreateTimeDesc(String username, String status,
+            Pageable pageable);
 
     @Query("SELECT COALESCE(SUM(o.totalPrice), 0.00) FROM OrderRecord o")
     BigDecimal sumTotalSales();
@@ -26,4 +27,6 @@ public interface OrderRepository extends JpaRepository<OrderRecord, Long> {
     List<OrderRecord> findByCreateTimeAfter(LocalDateTime time);
 
     List<OrderRecord> findByStatusOrderByCreateTimeDesc(String status);
+
+    List<OrderRecord> findByStatusAndCreateTimeBefore(String status, LocalDateTime createTime);
 }

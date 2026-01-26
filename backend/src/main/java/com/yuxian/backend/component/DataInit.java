@@ -229,10 +229,10 @@ public class DataInit implements CommandLineRunner {
             return "/images/beijitianxia.jpg";
         if (productName.contains("潮汕青蟹"))
             return "/images/chaoshanqingxie.jpg";
-        if (productName.contains("八腕总目"))
-            return "/images/bawan.jpg";
-        if (productName.contains("象拔蚌"))
-            return "/images/xiangbabang.jpg";
+        if (productName.contains("秘鲁鱿鱼"))
+            return "/images/miluqiu.jpg";
+        if (productName.contains("厚壳贻贝"))
+            return "/images/houkeyiwei.jpg";
         if (productName.contains("象牙蚌"))
             return "/images/xiangyabang.jpg";
         if (productName.contains("日月贝"))
@@ -311,22 +311,22 @@ public class DataInit implements CommandLineRunner {
             return "/images/wenge.jpg";
         if (productName.contains("青口"))
             return "/images/qingkou.jpg";
-        if (productName.contains("田螺"))
-            return "/images/tianluo.jpg";
+        if (productName.contains("北极贝"))
+            return "/images/beijibei.jpg";
         if (productName.contains("赤贝"))
             return "/images/chibei.jpg";
-        if (productName.contains("带子"))
-            return "/images/daizi.jpg";
+        if (productName.contains("珍珠蚝"))
+            return "/images/zhenzhuha.jpg";
         if (productName.contains("血蚶"))
             return "/images/xuehan.jpg";
         if (productName.contains("响螺"))
             return "/images/xiangluo.jpg";
         if (productName.contains("河蚌"))
             return "/images/hebang.jpg";
-        if (productName.contains("泥螺"))
-            return "/images/niluo.jpg";
-        if (productName.contains("香螺"))
-            return "/images/xiangluo2.jpg";
+        if (productName.contains("长肋日月贝"))
+            return "/images/changleiriyuebei.jpg";
+        if (productName.contains("澳洲黑边鲍"))
+            return "/images/aozhouheibianbao.jpg";
         if (productName.contains("鸟蛤"))
             return "/images/niaoge.jpg";
         if (productName.contains("带鱼"))

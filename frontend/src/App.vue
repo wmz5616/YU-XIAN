@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import { store } from './store.js'
+import { request } from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
@@ -14,12 +15,71 @@ const handleScroll = () => {
   isScrolled.value = window.scrollY > 20
 }
 
+let userSocket = null
+const initUserWebSocket = () => {
+  if (!store.currentUser || typeof WebSocket === 'undefined') return
+  if (userSocket) userSocket.close()
+  
+  const token = localStorage.getItem('yuxian_token') || ''
+  if (!token) return
+  
+  const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://'
+  const wsUrl = `${protocol}localhost:8080/ws/orders?token=${token}`
+  
+  userSocket = new WebSocket(wsUrl)
+  
+  userSocket.onopen = () => {
+    console.log('用户WebSocket已连接')
+  }
+  
+  userSocket.onmessage = (msg) => {
+    console.log('收到消息:', msg.data)
+    if (msg.data.includes('【系统消息】')) {
+      store.showNotification(msg.data.replace('【系统消息】', ''), 'success')
+      refreshUserData()
+    }
+  }
+  
+  userSocket.onerror = (e) => {
+    console.log('用户WebSocket连接失败:', e)
+  }
+}
+
+const refreshUserData = async () => {
+  try {
+    const res = await request.get('/api/users/me')
+    if (res && store.currentUser) {
+      store.currentUser.balance = res.balance
+      store.currentUser.points = res.points
+      store.login(store.currentUser, true)
+    }
+  } catch (e) {
+    console.error('刷新用户数据失败:', e)
+  }
+}
+
+watch(() => store.currentUser, (newUser) => {
+  if (newUser) {
+    initUserWebSocket()
+  } else if (userSocket) {
+    userSocket.close()
+    userSocket = null
+  }
+}, { immediate: true })
+
 onMounted(() => {
   window.addEventListener('scroll', handleScroll)
+  if (store.currentUser) {
+    initUserWebSocket()
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
+  if (userSocket) {
+    userSocket.close()
+    userSocket = null
+  }
 })
 
 const isTransparent = computed(() => {
@@ -232,7 +292,8 @@ const getLightColor = (type) => {
               <RouterLink to="/profile" class="relative">
                 <div class="w-9 h-9 rounded-full overflow-hidden border transition-all"
                   :class="isTransparent ? 'border-white/50' : 'border-slate-200 group-hover:border-slate-400'">
-                  <img v-if="store.currentUser.avatar" :src="store.currentUser.avatar"
+                  <img v-if="store.currentUser.avatar" 
+                    :src="store.currentUser.avatar.startsWith('http') ? store.currentUser.avatar : 'http://localhost:8080' + store.currentUser.avatar"
                     class="w-full h-full object-cover" />
                   <div v-else
                     class="w-full h-full flex items-center justify-center bg-slate-100 text-slate-500 font-bold text-xs">
@@ -308,13 +369,13 @@ const getLightColor = (type) => {
                     我们不生产海鲜，我们只是大自然的搬运工，致力于为中国家庭餐桌提供极致的鲜美体验。
                 </p>
                 <div class="flex gap-4 pt-2">
-                    <a href="#" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all duration-300 hover:scale-110 border border-white/5 group/icon">
+                    <a href="https://www.wechat.com/" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all duration-300 hover:scale-110 border border-white/5 group/icon">
                         <img src="/icons/wechat.png" class="w-4 h-4 opacity-50 group-hover/icon:opacity-100 transition-all duration-300 grayscale group-hover/icon:grayscale-0" />
                     </a>
-                    <a href="#" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all duration-300 hover:scale-110 border border-white/5 group/icon">
+                    <a href="https://www.douyin.com/" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all duration-300 hover:scale-110 border border-white/5 group/icon">
                          <img src="/icons/douyin.png" class="w-4 h-4 opacity-50 group-hover/icon:opacity-100 transition-all duration-300 grayscale group-hover/icon:grayscale-0" />
                     </a>
-                     <a href="#" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all duration-300 hover:scale-110 border border-white/5 group/icon">
+                     <a href="https://www.xiaohongshu.com/" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all duration-300 hover:scale-110 border border-white/5 group/icon">
                          <img src="/icons/redbook.png" class="w-4 h-4 opacity-50 group-hover/icon:opacity-100 transition-all duration-300 grayscale group-hover/icon:grayscale-0" />
                     </a>
                 </div>
@@ -416,6 +477,12 @@ const getLightColor = (type) => {
 </template>
 
 <style>
+body {
+  background-color: #f8fafc;
+}
+.dark body {
+  background-color: #0f172a;
+}
 .will-change-transform {
   will-change: transform;
 }

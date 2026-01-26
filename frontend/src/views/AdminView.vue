@@ -84,6 +84,12 @@ const initWebSocket = () => {
                 fetchOrders(false);
             }
         }
+        if (msg.data === 'NEW_REFUND') {
+            Toast.fire({ icon: 'warning', title: '📝 收到新的售后申请！', text: '请及时处理' });
+            if (currentTab.value === 'refund') {
+                fetchRefunds();
+            }
+        }
     };
 
     socket.onerror = () => {
@@ -622,7 +628,8 @@ onUnmounted(() => { if (socket) socket.close(); });
                         <span class="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">待处理: {{
                             refundList.filter(r => r.status === '售后处理中' || r.status === 'PENDING').length}}</span>
                     </div>
-                    <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
                         <thead class="bg-slate-50 dark:bg-slate-800/50 font-bold text-slate-500">
                             <tr>
                                 <th class="p-5">关联订单</th>
@@ -671,6 +678,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                     <div v-if="refundList.length === 0" class="p-12 text-center text-slate-400">
                         暂无售后申请
                     </div>
+                    </div>
                 </div>
             </div>
 
@@ -704,84 +712,90 @@ onUnmounted(() => { if (socket) socket.close(); });
                 </div>
             </div>
 
-            <div v-if="showProductModal"
-                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-scale-up">
-                    <h3 class="font-bold mb-4 text-lg dark:text-white">{{ editingProduct.id ? '编辑' : '新增' }}商品</h3>
-                    <div class="space-y-4">
-                        <input v-model="editingProduct.name"
-                            class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                            placeholder="商品名称">
-                        <div class="grid grid-cols-2 gap-4">
-                            <input v-model="editingProduct.price"
-                                class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                placeholder="价格">
-                            <input v-model="editingProduct.stock"
-                                class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                placeholder="库存">
+            <Teleport to="body">
+                <div v-if="showProductModal"
+                    class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-scale-up border border-slate-100 dark:border-slate-800">
+                        <h3 class="font-bold mb-4 text-lg dark:text-white">{{ editingProduct.id ? '编辑' : '新增' }}商品</h3>
+                        <div class="space-y-4">
+                            <input v-model="editingProduct.name"
+                                class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                placeholder="商品名称">
+                            <div class="grid grid-cols-2 gap-4">
+                                <input v-model="editingProduct.price"
+                                    class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                    placeholder="价格">
+                                <input v-model="editingProduct.stock"
+                                    class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                    placeholder="库存">
+                            </div>
+                            <input v-model="editingProduct.imageUrl"
+                                class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                placeholder="图片URL">
+                            <textarea v-model="editingProduct.description"
+                                class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                placeholder="描述"></textarea>
                         </div>
-                        <input v-model="editingProduct.imageUrl"
-                            class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                            placeholder="图片URL">
-                        <textarea v-model="editingProduct.description"
-                            class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                            placeholder="描述"></textarea>
-                    </div>
-                    <div class="flex justify-end gap-3 mt-6">
-                        <button @click="showProductModal = false"
-                            class="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">取消</button>
-                        <button @click="saveProduct"
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+                        <div class="flex justify-end gap-3 mt-6">
+                            <button @click="showProductModal = false"
+                                class="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">取消</button>
+                            <button @click="saveProduct"
+                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
-            <div v-if="showPointModal"
-                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-scale-up">
-                    <h3 class="font-bold mb-4 dark:text-white">修改积分</h3>
-                    <input v-model="editingUser.points" type="number"
-                        class="w-full p-3 border rounded-xl mb-4 dark:bg-slate-800 dark:border-slate-700 dark:text-white">
-                    <div class="flex justify-end gap-3">
-                        <button @click="showPointModal = false" class="px-4 py-2 text-slate-500">取消</button>
-                        <button @click="saveUserPoints" class="px-4 py-2 bg-blue-600 text-white rounded-lg">保存</button>
+            <Teleport to="body">
+                <div v-if="showPointModal"
+                    class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-scale-up border border-slate-100 dark:border-slate-800">
+                        <h3 class="font-bold mb-4 dark:text-white">修改积分</h3>
+                        <input v-model="editingUser.points" type="number"
+                            class="w-full p-3 border rounded-xl mb-4 dark:bg-slate-800 dark:border-slate-700 dark:text-white">
+                        <div class="flex justify-end gap-3">
+                            <button @click="showPointModal = false" class="px-4 py-2 text-slate-500">取消</button>
+                            <button @click="saveUserPoints" class="px-4 py-2 bg-blue-600 text-white rounded-lg">保存</button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
-            <div v-if="showDetailModal"
-                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-2xl shadow-2xl animate-scale-up">
-                    <div class="flex justify-between items-center mb-6 border-b pb-4 dark:border-slate-800">
-                        <h3 class="font-bold text-lg dark:text-white">订单详情 <span
-                                class="text-sm font-mono text-slate-400">#{{ currentOrderDetails.id }}</span></h3>
-                        <button @click="showDetailModal = false"
-                            class="text-2xl text-slate-400 hover:text-slate-600">&times;</button>
-                    </div>
-                    <div class="space-y-4">
-                        <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                            <p class="text-sm text-slate-500 dark:text-slate-400 mb-1">收货信息</p>
-                            <p class="font-bold text-slate-800 dark:text-white">{{ currentOrderDetails.receiverName }}
-                                {{ currentOrderDetails.receiverPhone }}</p>
-                            <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">{{
-                                currentOrderDetails.receiverAddress }}</p>
+            <Teleport to="body">
+                <div v-if="showDetailModal"
+                    class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-2xl shadow-2xl animate-scale-up border border-slate-100 dark:border-slate-800">
+                        <div class="flex justify-between items-center mb-6 border-b pb-4 dark:border-slate-800">
+                            <h3 class="font-bold text-lg dark:text-white">订单详情 <span
+                                    class="text-sm font-mono text-slate-400">#{{ currentOrderDetails.id }}</span></h3>
+                            <button @click="showDetailModal = false"
+                                class="text-2xl text-slate-400 hover:text-slate-600">&times;</button>
                         </div>
-                        <div>
-                            <p class="text-sm text-slate-500 mb-2">商品清单</p>
-                            <div class="border rounded-xl dark:border-slate-700 divide-y dark:divide-slate-700">
-                                <div v-for="item in currentOrderDetails.items" :key="item.id"
-                                    class="p-3 flex justify-between items-center">
-                                    <span class="font-medium dark:text-white">{{ item.productName }}</span>
-                                    <div class="text-right">
-                                        <div class="text-sm text-slate-500">x{{ item.quantity }}</div>
-                                        <div class="font-mono dark:text-white">¥{{ item.price }}</div>
+                        <div class="space-y-4">
+                            <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                                <p class="text-sm text-slate-500 dark:text-slate-400 mb-1">收货信息</p>
+                                <p class="font-bold text-slate-800 dark:text-white">{{ currentOrderDetails.receiverName }}
+                                    {{ currentOrderDetails.receiverPhone }}</p>
+                                <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">{{
+                                    currentOrderDetails.receiverAddress }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-slate-500 mb-2">商品清单</p>
+                                <div class="border rounded-xl dark:border-slate-700 divide-y dark:divide-slate-700">
+                                    <div v-for="item in currentOrderDetails.items" :key="item.id"
+                                        class="p-3 flex justify-between items-center">
+                                        <span class="font-medium dark:text-white">{{ item.productName }}</span>
+                                        <div class="text-right">
+                                            <div class="text-sm text-slate-500">x{{ item.quantity }}</div>
+                                            <div class="font-mono dark:text-white">¥{{ item.price }}</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
         </main>
     </div>

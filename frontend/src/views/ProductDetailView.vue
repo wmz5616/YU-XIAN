@@ -26,6 +26,27 @@ const chatBoxRef = ref(null)
 
 const suggestedQuestions = ref(['怎么做最好吃？','需要冷冻保存吗？','发什么快递？'])
 
+const liveEnvironment = ref({
+  waterTemp: '0.0',
+  salinity: '0.0',
+  windSpeed: '0.0'
+})
+let environmentInterval = null
+
+const updateEnvironment = () => {
+  if (!insightData.value?.environment) return
+  const env = insightData.value.environment
+  const baseTemp = parseFloat(env.waterTemp)
+  const baseSalinity = parseFloat(env.salinity)
+  const baseWind = parseFloat(env.windSpeed)
+  
+  liveEnvironment.value = {
+    waterTemp: (baseTemp + (Math.random() - 0.5) * 0.4).toFixed(1),
+    salinity: (baseSalinity + (Math.random() - 0.5) * 0.1).toFixed(1),
+    windSpeed: (baseWind + (Math.random() - 0.5) * 0.3).toFixed(1)
+  }
+}
+
 const scrollToBottom = () => {
   nextTick(() => {
     if (chatBoxRef.value) {
@@ -94,19 +115,43 @@ const initMap = () => {
   if (!insightData.value || !insightData.value.trajectory || !window.AMap) return
   const traj = insightData.value.trajectory
   const endPoint = traj[traj.length - 1]
+  const startPoint = traj[0]
+  
   const map = new window.AMap.Map('traceMap', {
     zoom: 6, center: endPoint, viewMode: '3D', pitch: 20,
     mapStyle: 'amap://styles/whitesmoke', dragEnable: false, zoomEnable: false, showLabel: false
   })
   mapInstance.value = map
+  
+  const calcDistance = (p1, p2) => {
+    const R = 6371
+    const dLat = (p2[1] - p1[1]) * Math.PI / 180
+    const dLon = (p2[0] - p1[0]) * Math.PI / 180
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
+              Math.cos(p1[1] * Math.PI / 180) * Math.cos(p2[1] * Math.PI / 180) * 
+              Math.sin(dLon/2) * Math.sin(dLon/2)
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  }
+  const distance = Math.round(calcDistance(startPoint, endPoint))
+  const hours = Math.round(distance / 25)
+  
   const polyline = new window.AMap.Polyline({
     path: traj, isOutline: true, outlineColor: '#ffffff', borderWeight: 2,
-    strokeColor: "#2563eb", strokeOpacity: 1, strokeWeight: 5, strokeStyle: "dashed", strokeDasharray: [15, 10], lineJoin: 'round'
+    strokeColor: "#2563eb", strokeOpacity: 1, strokeWeight: 4, strokeStyle: "solid", lineJoin: 'round',
+    showDir: true
   })
   map.add(polyline)
-  const createLabel = (title, sub) => `<div class="flex flex-col items-center transform transition-transform hover:scale-110" style="pointer-events: none;"><div class="bg-slate-900/90 backdrop-blur text-white px-3 py-1.5 rounded-lg shadow-xl mb-1 flex flex-col items-center border border-slate-700/50"><span class="text-xs font-bold whitespace-nowrap">${title}</span><span class="text-[10px] text-slate-300 uppercase tracking-wider">${sub}</span></div><div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-slate-900/90 mb-1"></div><div class="relative top-[-4px] drop-shadow-md">${SVG_PIN}</div></div>`
-  const startMarker = new window.AMap.Marker({ position: traj[0], content: createLabel('捕捞海域', 'Origin'), offset: new window.AMap.Pixel(-24, -85), zIndex: 10 })
-  const endMarker = new window.AMap.Marker({ position: endPoint, content: createLabel(`${product.value.origin}港`, 'Port'), offset: new window.AMap.Pixel(-24, -85), zIndex: 100 })
+  
+  const createLabel = (title, sub, extra) => `<div class="flex flex-col items-center transform transition-transform hover:scale-110" style="pointer-events: none;"><div class="bg-slate-900/90 backdrop-blur text-white px-3 py-1.5 rounded-lg shadow-xl mb-1 flex flex-col items-center border border-slate-700/50"><span class="text-xs font-bold whitespace-nowrap">${title}</span><span class="text-[10px] text-slate-300 uppercase tracking-wider">${sub}</span>${extra || ''}</div><div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-slate-900/90 mb-1"></div><div class="relative top-[-4px] drop-shadow-md">${SVG_PIN}</div></div>`
+  
+  const startMarker = new window.AMap.Marker({ position: startPoint, content: createLabel('捕捞海域', 'Origin'), offset: new window.AMap.Pixel(-24, -85), zIndex: 10 })
+  const endMarker = new window.AMap.Marker({ 
+    position: endPoint, 
+    content: createLabel(`${product.value.origin}港`, 'Port', `<div class="mt-1 pt-1 border-t border-white/20 text-[10px] text-emerald-300 font-mono">${distance}km · ${hours}h</div>`), 
+    offset: new window.AMap.Pixel(-24, -95), 
+    zIndex: 100 
+  })
+  
   map.add([startMarker, endMarker])
   map.setFitView(null, false, [80, 60, 60, 60])
 }
@@ -117,12 +162,114 @@ const initChart = () => {
   const dates = insightData.value.priceHistory.map(item => item.date)
   const prices = insightData.value.priceHistory.map(item => item.price)
   const minPrice = Math.min(...prices)
+  const maxPrice = Math.max(...prices)
+  const currentPrice = prices[prices.length - 1]
+  
   myChart.setOption({
-    grid: { top: 30, bottom: 0, left: 0, right: 0 },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderColor: '#e2e8f0', textStyle: { color: '#0f172a', fontSize: 12 }, formatter: '{b} <br/> <span style="font-weight:bold;color:#2563eb">¥{c}</span>' },
-    xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { show: false } },
-    yAxis: { type: 'value', min: Math.floor(minPrice * 0.9), splitLine: { show: false }, axisLabel: { show: false } },
-    series: [{ data: prices, type: 'line', smooth: 0.6, symbol: 'none', symbolSize: 8, itemStyle: { color: '#2563eb', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 0 }, areaStyle: { opacity: 0.8, color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#3b82f6' }, { offset: 1, color: '#93c5fd' }]) }, markPoint: { data: [{ type: 'max', name: 'Max', itemStyle: { color: '#ef4444' } }], label: { color: '#fff', fontSize: 10 } } }]
+    grid: { top: 35, bottom: 25, left: 10, right: 10 },
+    tooltip: { 
+      trigger: 'axis', 
+      backgroundColor: 'rgba(15, 23, 42, 0.9)', 
+      borderColor: 'transparent',
+      borderRadius: 12,
+      padding: [10, 14],
+      textStyle: { color: '#fff', fontSize: 12 }, 
+      formatter: (params) => {
+        const value = params[0].value
+        const change = value === currentPrice ? '' : (value > currentPrice ? '↓' : '↑')
+        return `<div style="font-size:11px;opacity:0.7;margin-bottom:4px">${params[0].name}</div><div style="font-size:16px;font-weight:bold">¥${value} ${change}</div>`
+      },
+      axisPointer: {
+        type: 'line',
+        lineStyle: { color: '#3b82f6', width: 1, type: 'dashed' }
+      }
+    },
+    xAxis: { 
+      type: 'category', 
+      data: dates, 
+      axisTick: { show: false }, 
+      axisLine: { show: false }, 
+      axisLabel: { 
+        show: true, 
+        fontSize: 10, 
+        color: '#94a3b8',
+        interval: 0
+      },
+      boundaryGap: false
+    },
+    yAxis: { 
+      type: 'value', 
+      min: Math.floor(minPrice * 0.95), 
+      max: Math.ceil(maxPrice * 1.05),
+      splitLine: { show: false }, 
+      axisLabel: { show: false } 
+    },
+    series: [{ 
+      data: prices, 
+      type: 'line', 
+      smooth: 0.4, 
+      symbol: 'circle',
+      symbolSize: 6,
+      showSymbol: false,
+      emphasis: {
+        focus: 'series',
+        itemStyle: { 
+          color: '#3b82f6',
+          borderWidth: 3, 
+          borderColor: '#fff',
+          shadowColor: 'rgba(59, 130, 246, 0.5)',
+          shadowBlur: 10
+        }
+      },
+      itemStyle: { color: '#3b82f6' }, 
+      lineStyle: { 
+        width: 3, 
+        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+          { offset: 0, color: '#60a5fa' }, 
+          { offset: 1, color: '#3b82f6' }
+        ]),
+        shadowColor: 'rgba(59, 130, 246, 0.3)',
+        shadowBlur: 8,
+        shadowOffsetY: 4
+      }, 
+      areaStyle: { 
+        opacity: 0.15, 
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#3b82f6' }, 
+          { offset: 1, color: 'rgba(59, 130, 246, 0)' }
+        ]) 
+      }, 
+      markPoint: { 
+        data: [
+          { 
+            type: 'max', 
+            name: '最高',
+            symbol: 'pin',
+            symbolSize: 55,
+            symbolOffset: [0, -5],
+            itemStyle: { 
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#f97316' },
+                { offset: 1, color: '#ea580c' }
+              ]),
+              shadowColor: 'rgba(249, 115, 22, 0.4)',
+              shadowBlur: 10
+            }
+          }
+        ], 
+        label: { 
+          color: '#fff', 
+          fontSize: 11,
+          fontWeight: 'bold',
+          offset: [0, -2],
+          formatter: (params) => '¥' + params.value
+        },
+        animation: true,
+        animationDuration: 1000
+      }
+    }],
+    animationDuration: 1500,
+    animationEasing: 'cubicOut'
   })
 }
 
@@ -163,10 +310,15 @@ onMounted(async () => {
     fetchRelated(product.value.category, id)
     insightData.value = await request(`/api/products/${id}/insight`)
     nextTick(() => { initChart(); initMap() })
+    updateEnvironment()
+    environmentInterval = setInterval(updateEnvironment, 2000)
   } catch (error) { console.error(error) }
 })
 
-onUnmounted(() => { if (mapInstance.value) mapInstance.value.destroy() })
+onUnmounted(() => { 
+  if (mapInstance.value) mapInstance.value.destroy()
+  if (environmentInterval) clearInterval(environmentInterval)
+})
 watch(() => route.params.id, () => { window.location.reload() })
 </script>
 
@@ -292,16 +444,31 @@ watch(() => route.params.id, () => { window.location.reload() })
             <div
               class="bg-slate-900 rounded-[2rem] p-6 text-white relative overflow-hidden shadow-xl shadow-slate-900/10 flex-shrink-0">
               <div class="absolute top-0 right-0 w-40 h-40 bg-blue-500 rounded-full blur-[80px] opacity-30"></div>
-              <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 relative z-10">实时环境</h3>
+              <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 relative z-10 flex items-center gap-2">
+                实时环境
+                <span class="flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+              </h3>
               <div class="space-y-5 relative z-10">
-                <div class="flex justify-between items-center border-b border-white/10 pb-3"><span
-                    class="text-sm text-slate-300">海水温度</span><span class="font-mono text-xl font-bold text-blue-200">{{
-                      insightData.environment?.waterTemp }}°C</span></div>
-                <div class="flex justify-between items-center border-b border-white/10 pb-3"><span
-                    class="text-sm text-slate-300">海水盐度</span><span class="font-mono text-xl font-bold text-teal-200">{{
-                      insightData.environment?.salinity }}%</span></div>
-                <div class="flex justify-between items-center"><span class="text-sm text-slate-300">作业风力</span><span
-                    class="font-mono text-xl font-bold text-orange-200">{{ insightData.environment?.windSpeed }}级</span>
+                <div class="flex justify-between items-center border-b border-white/10 pb-3">
+                  <span class="text-sm text-slate-300">海水温度</span>
+                  <span class="font-mono text-xl font-bold text-blue-200 transition-all duration-500">
+                    {{ liveEnvironment.waterTemp }}°C
+                  </span>
+                </div>
+                <div class="flex justify-between items-center border-b border-white/10 pb-3">
+                  <span class="text-sm text-slate-300">海水盐度</span>
+                  <span class="font-mono text-xl font-bold text-teal-200 transition-all duration-500">
+                    {{ liveEnvironment.salinity }}%
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-slate-300">作业风力</span>
+                  <span class="font-mono text-xl font-bold text-orange-200 transition-all duration-500">
+                    {{ liveEnvironment.windSpeed }}级
+                  </span>
                 </div>
               </div>
             </div>

@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
 import com.yuxian.backend.dto.RefundDetailVO;
 
 @Service
@@ -22,15 +22,21 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final UserCouponRepository userCouponRepository;
     private final RefundFeedbackRepository refundFeedbackRepository;
+    private final UserRepository userRepository;
+    private final WalletLogRepository walletLogRepository;
 
     public OrderServiceImpl(ProductRepository productRepository,
             OrderRepository orderRepository,
             UserCouponRepository userCouponRepository,
-            RefundFeedbackRepository refundFeedbackRepository) {
+            RefundFeedbackRepository refundFeedbackRepository,
+            UserRepository userRepository,
+            WalletLogRepository walletLogRepository) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.userCouponRepository = userCouponRepository;
         this.refundFeedbackRepository = refundFeedbackRepository;
+        this.userRepository = userRepository;
+        this.walletLogRepository = walletLogRepository;
     }
 
     @Override
@@ -133,7 +139,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void payOrder(Long orderId, String username) {
+    public void payOrder(Long orderId, String username, String paymentMethod) {
         OrderRecord order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
@@ -143,6 +149,33 @@ public class OrderServiceImpl implements OrderService {
 
         if (!"UNPAID".equals(order.getStatus())) {
             throw new RuntimeException("订单状态异常，无法支付");
+        }
+
+        // Balance Payment Logic
+        if ("BALANCE".equals(paymentMethod)) {
+            User user = userRepository.findByUsername(username);
+            if (user == null)
+                throw new RuntimeException("用户异常");
+
+            BigDecimal currentBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
+            if (currentBalance.compareTo(order.getTotalPrice()) < 0) {
+                throw new RuntimeException("余额不足，请充值或选择其他支付方式");
+            }
+
+            // Deduct Balance
+            user.setBalance(currentBalance.subtract(order.getTotalPrice()));
+            userRepository.save(user); // Optimistic locking handled by @Version if present
+
+            // Log
+            WalletLog log = new WalletLog();
+            log.setUserId(user.getId());
+            log.setAmount(order.getTotalPrice().negate()); // Expense is negative or just tracked as Type 2? usually
+                                                           // separate type.
+            log.setType(2); // 2 = Payment
+            log.setDescription("购买商品：" + order.getProductNames());
+            walletLogRepository.save(log);
+
+            System.out.println("余额支付成功: User=" + username + " Price=" + order.getTotalPrice());
         }
 
         order.setStatus("PAID");
@@ -179,6 +212,13 @@ public class OrderServiceImpl implements OrderService {
         feedback.setContent("用户申请售后：" + reason);
         feedback.setOperator(username);
         refundFeedbackRepository.save(feedback);
+
+        // Notify admins about new refund request
+        try {
+            WebSocketServer.sendInfo("NEW_REFUND");
+        } catch (Exception e) {
+            System.err.println("WebSocket 推送失败: " + e.getMessage());
+        }
     }
 
     @Override
@@ -205,6 +245,24 @@ public class OrderServiceImpl implements OrderService {
         if (pass) {
             order.setStatus("退款成功");
             adminFeedback.setContent("审核通过");
+
+            // Refund to Balance
+            User user = userRepository.findByUsername(order.getUsername());
+            if (user != null) {
+                BigDecimal currentBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
+                user.setBalance(currentBalance.add(order.getTotalPrice()));
+                userRepository.save(user);
+
+                WalletLog log = new WalletLog();
+                log.setUserId(user.getId());
+                log.setAmount(order.getTotalPrice());
+                log.setType(1); // 1 = Refund
+                log.setDescription("订单退款: " + orderId);
+                walletLogRepository.save(log);
+
+                WebSocketServer.sendToUser(user.getUsername(), "【系统消息】您的订单退款已到账，金额：" + order.getTotalPrice());
+            }
+
         } else {
             order.setStatus("已送达");
             adminFeedback.setContent("审核驳回，原因：" + (reason != null ? reason : "无"));

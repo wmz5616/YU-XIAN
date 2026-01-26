@@ -5,6 +5,21 @@ import { useRouter } from 'vue-router'
 import { request } from '@/utils/request'
 import Swal from 'sweetalert2'
 
+const formatNumber = (num) => {
+  if (num === null || num === undefined) return '0'
+  const n = Number(num)
+  if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
+  if (n >= 10000) return (n / 10000).toFixed(1) + '万'
+  return n.toString()
+}
+
+const getAvatarUrl = computed(() => {
+  const avatar = store.currentUser?.avatar
+  if (!avatar) return `https://api.dicebear.com/7.x/avataaars/svg?seed=${store.currentUser?.username}`
+  if (avatar.startsWith('http')) return avatar
+  return `http://localhost:8080${avatar}`
+})
+
 const router = useRouter()
 const orders = ref([])
 const showAddressModal = ref(false)
@@ -91,7 +106,39 @@ watch(searchQuery, () => currentPage.value = 1)
 
 const afterSalesOrders = computed(() => {
   return orders.value.filter(o => ['售后处理中', '退款成功', '已退货'].includes(o.status))
+    .sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
 })
+
+const afterSalesPage = ref(1)
+const afterSalesPageSize = 3
+const paginatedAfterSales = computed(() => {
+  const start = (afterSalesPage.value - 1) * afterSalesPageSize
+  return afterSalesOrders.value.slice(start, start + afterSalesPageSize)
+})
+const afterSalesTotalPages = computed(() => Math.ceil(afterSalesOrders.value.length / afterSalesPageSize))
+
+const deleteAfterSalesOrder = async (order) => {
+  if (order.status === '售后处理中') {
+    return Swal.fire('无法删除', '售后处理中的订单无法删除', 'warning')
+  }
+  const confirm = await Swal.fire({
+    title: '删除售后记录?',
+    text: '此操作不可恢复',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    confirmButtonText: '删除'
+  })
+  if (!confirm.isConfirmed) return
+  
+  try {
+    await request.delete(`/api/orders/${order.id}`)
+    orders.value = orders.value.filter(o => o.id !== order.id)
+    Swal.fire('已删除', '售后记录已移除', 'success')
+  } catch (e) {
+    Swal.fire('删除失败', e.message || '系统错误', 'error')
+  }
+}
 
 const openRefundModal = (order) => {
   refundForm.value = {
@@ -164,7 +211,7 @@ const confirmReceipt = async (order) => {
 
   try {
     const updatedUser = await request(`/api/products/order/${order.id}/receive`, { method: 'POST' })
-    store.login(updatedUser)
+    store.login(updatedUser, true)
     order.status = '已送达'
 
     Swal.fire({
@@ -199,7 +246,7 @@ const handleAvatarUpload = async (event) => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('username', store.currentUser.username);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('yuxian_token');
       const response = await fetch('http://localhost:8080/api/users/upload-avatar', {
         method: 'POST',
         headers: { 'Authorization': token ? `Bearer ${token}` : '' },
@@ -208,7 +255,7 @@ const handleAvatarUpload = async (event) => {
       if (!response.ok) throw new Error('上传失败');
       const updatedUser = await response.json();
       if (store.currentUser) store.currentUser.avatar = updatedUser.avatar
-      store.login(updatedUser)
+      store.login(updatedUser, true)
       Swal.fire('成功', '头像更新成功', 'success')
     } catch (e) {
       console.error(e)
@@ -217,12 +264,9 @@ const handleAvatarUpload = async (event) => {
   }
 }
 
-const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); showAddressModal.value = false; }
-const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u); }
+const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u, true); showAddressModal.value = false; }
+const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u, true); }
 
-// ============================================
-// 修复核心：定位功能 (Locate User)
-// ============================================
 const locateUser = () => {
   if (typeof AMap === 'undefined') {
     Swal.fire('错误', '地图组件未加载，请刷新页面重试', 'error')
@@ -238,7 +282,6 @@ const locateUser = () => {
       enableHighAccuracy: true,
       timeout: 10000,
       zoomToAccuracy: true,
-      // 🚫 核心修复：禁用所有UI元素，防止产生白色遮罩
       showButton: false,
       showMarker: false,
       showCircle: false,
@@ -249,7 +292,11 @@ const locateUser = () => {
       if (status === 'complete') {
         console.log('定位成功:', result.position)
 
-        const geocoder = new AMap.Geocoder({ radius: 1000, extensions: 'all' })
+        const geocoder = new AMap.Geocoder({ 
+          radius: 1000, 
+          extensions: 'all',
+          timeout: 20000 
+        })
 
         geocoder.getAddress(result.position, function (status, data) {
           isLocating.value = false
@@ -266,8 +313,8 @@ const locateUser = () => {
               showConfirmButton: false
             })
           } else {
-            newAddress.value.detail = `(已定位到经纬度: ${result.position}, 但地址解析超时)`
-            Swal.fire('提示', '地址解析失败，请手动补充', 'warning')
+            newAddress.value.detail = `(已定位到经纬度: ${result.position}, 但地址获取失败，请手动输入)`
+            Swal.fire('提示', '地址解析失败 (可能因网络原因)，请手动补充', 'warning')
           }
         })
       } else {
@@ -356,7 +403,7 @@ const getStatusColor = (s) => {
                   class="absolute -inset-[3px] rounded-full bg-gradient-to-tr from-cyan-500 via-blue-500 to-indigo-500 opacity-60 blur-[2px] animate-spin-slow">
                 </div>
                 <img
-                  :src="store.currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${store.currentUser?.username}`"
+                  :src="getAvatarUrl"
                   class="relative w-full h-full rounded-full border-[3px] border-white/40 object-cover shadow-2xl z-10 group-hover:scale-105 transition-transform duration-500">
                 <label
                   class="absolute bottom-0 right-0 z-20 bg-white/10 backdrop-blur-md border border-white/30 text-white p-1.5 rounded-full cursor-pointer hover:bg-white/30 transition-all shadow-lg hover:scale-110">
@@ -385,30 +432,39 @@ const getStatusColor = (s) => {
                 <span class="tracking-wider">{{ userLocation }}</span>
               </div>
 
-              <div class="flex items-center justify-between w-full mt-8 border-t border-white/10 pt-6 px-4">
-                <div class="flex flex-col items-center flex-1 cursor-default group/item">
+              <div class="grid grid-cols-4 gap-1 w-full mt-8 border-t border-white/10 pt-6 px-1">
+                <div class="flex flex-col items-center cursor-default group/item">
                   <div
-                    class="text-2xl font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm">
+                    class="h-7 flex items-end text-base font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm text-center">
                     {{ orders.length }}</div>
-                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">订单</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest scale-90">订单</div>
                 </div>
-                <div class="w-px h-8 bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+                
                 <div
-                  class="flex flex-col items-center flex-1 cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all"
+                  class="flex flex-col items-center cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all"
                   @click="router.push('/coupon')">
                   <div
-                    class="text-2xl font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm">
+                    class="h-7 flex items-end text-base font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm text-center">
                     {{ couponCount }}</div>
-                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">优惠券</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest scale-90">优惠券</div>
                 </div>
-                <div class="w-px h-8 bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+                
                 <div
-                  class="flex flex-col items-center flex-1 cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all"
+                  class="flex flex-col items-center cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all relative"
+                  @click="router.push('/wallet')">
+                  <div
+                    class="h-7 flex items-end text-base font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm text-center whitespace-nowrap">
+                    <span class="text-[10px] opacity-60 mr-0.5">¥</span>{{ formatNumber(store.currentUser?.balance || 0) }}</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest scale-90">余额</div>
+                </div>
+                
+                <div
+                  class="flex flex-col items-center cursor-pointer group/item hover:bg-white/5 rounded-xl py-2 -my-2 transition-all"
                   @click="router.push('/points')">
                   <div
-                    class="text-2xl font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm">
-                    {{ store.currentUser?.points || 0 }}</div>
-                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest">积分</div>
+                    class="h-7 flex items-end text-base font-bold font-serif-sc text-white group-hover/item:text-cyan-300 transition-colors drop-shadow-sm text-center">
+                    {{ formatNumber(store.currentUser?.points || 0) }}</div>
+                  <div class="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-widest scale-90">积分</div>
                 </div>
               </div>
             </div>
@@ -538,8 +594,16 @@ const getStatusColor = (s) => {
               <div class="text-6xl mb-4 opacity-20">📭</div>
               <p class="text-slate-500">暂无售后记录</p>
             </div>
-            <div v-for="order in afterSalesOrders" :key="order.id"
-              class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+            <div v-for="order in paginatedAfterSales" :key="order.id"
+              class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+              
+              <button v-if="order.status !== '售后处理中'" @click="deleteAfterSalesOrder(order)"
+                class="absolute top-4 right-4 text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition opacity-0 group-hover:opacity-100 z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                </svg>
+              </button>
+
               <div class="absolute top-0 right-0 px-4 py-1 text-xs font-bold rounded-bl-xl"
                 :class="{ 'bg-orange-100 text-orange-700': order.status === '售后处理中', 'bg-green-100 text-green-700': order.status === '退款成功', 'bg-slate-100 text-slate-700': order.status === '已退货' }">
                 {{ order.status === '售后处理中' ? '处理中' : (order.status === '退款成功' ? '退款成功' : order.status) }}</div>
@@ -560,6 +624,14 @@ const getStatusColor = (s) => {
                   :class="{ 'text-orange-600 font-bold': order.status === '售后处理中', 'text-green-600': order.status === '退款成功' }">商家审核{{
                     order.status === '售后处理中' ? '中' : '通过' }}</span><span
                   :class="{ 'text-green-600 font-bold': order.status === '退款成功' }">退款到账</span></div>
+            </div>
+
+            <div v-if="afterSalesTotalPages > 1" class="flex justify-center mt-6 gap-3">
+              <button @click="afterSalesPage--" :disabled="afterSalesPage === 1"
+                class="px-3 py-1 rounded bg-white border text-sm disabled:opacity-50 hover:bg-slate-50">上一页</button>
+              <span class="text-sm text-slate-500 py-1">{{ afterSalesPage }} / {{ afterSalesTotalPages }}</span>
+              <button @click="afterSalesPage++" :disabled="afterSalesPage === afterSalesTotalPages"
+                class="px-3 py-1 rounded bg-white border text-sm disabled:opacity-50 hover:bg-slate-50">下一页</button>
             </div>
           </div>
 
@@ -589,74 +661,78 @@ const getStatusColor = (s) => {
       </div>
     </div>
 
-    <div v-if="showAddressModal"
-      class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-scale-up border border-white/50">
-        <h3 class="text-xl font-black text-slate-800 mb-6">新增地址</h3>
-        <div class="space-y-4">
-          <input v-model="newAddress.contact" placeholder="联系人" class="input-field">
-          <input v-model="newAddress.phone" placeholder="手机号" class="input-field">
-          <div class="relative">
-            <textarea v-model="newAddress.detail" placeholder="详细地址"
-              class="input-field h-24 pt-3 resize-none"></textarea>
-            <button @click="locateUser"
-              class="absolute right-3 top-3 z-10 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold flex items-center gap-1 hover:bg-blue-100 transition"
-              :disabled="isLocating">
-              <span v-if="isLocating" class="animate-bounce"><img src="/icons/location.png"
-                  class="w-5 h-5 object-contain" alt="定位中" /></span>
-              <span v-else><img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位" /></span>
-              <span>{{ isLocating ? '定位中...' : '定位' }}</span>
-            </button>
-          </div>
-          <div class="flex gap-2">
-            <span v-for="t in ['家', '公司', '学校']" :key="t" @click="newAddress.tag = t"
-              :class="['text-xs px-4 py-2 rounded-xl cursor-pointer border transition font-medium', newAddress.tag === t ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100']">{{
-              t }}</span>
-          </div>
-        </div>
-        <div class="flex gap-3 mt-8">
-          <button @click="showAddressModal = false"
-            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button>
-          <button @click="saveAddress"
-            class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition font-bold transform active:scale-95">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showRefundModal"
-      class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-scale-up border border-white/50">
-        <h3 class="text-xl font-black text-slate-800 mb-2">申请售后</h3>
-        <p class="text-sm text-slate-500 mb-6">订单 #{{ 20250000 + refundForm.orderId }}</p>
-        <div class="bg-slate-50 p-4 rounded-xl mb-4 flex gap-3">
-          <div class="text-2xl">📦</div>
-          <div>
-            <div class="font-bold text-sm text-slate-700 line-clamp-1">{{ refundForm.productNames }}</div>
-            <div class="text-xs text-slate-400">退款金额: ¥{{ refundForm.amount }}</div>
-          </div>
-        </div>
-        <div class="space-y-4">
-          <div>
-            <label class="text-xs font-bold text-slate-500 mb-1 block">售后类型</label>
+    <Teleport to="body">
+      <div v-if="showAddressModal"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-scale-up border border-white/50">
+          <h3 class="text-xl font-black text-slate-800 mb-6">新增地址</h3>
+          <div class="space-y-4">
+            <input v-model="newAddress.contact" placeholder="联系人" class="input-field">
+            <input v-model="newAddress.phone" placeholder="手机号" class="input-field">
+            <div class="relative">
+              <textarea v-model="newAddress.detail" placeholder="详细地址"
+                class="input-field h-24 pt-3 resize-none"></textarea>
+              <button @click="locateUser"
+                class="absolute right-3 top-3 z-10 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold flex items-center gap-1 hover:bg-blue-100 transition"
+                :disabled="isLocating">
+                <span v-if="isLocating" class="animate-bounce"><img src="/icons/location.png"
+                    class="w-5 h-5 object-contain" alt="定位中" /></span>
+                <span v-else><img src="/icons/location.png" class="w-5 h-5 object-contain" alt="定位" /></span>
+                <span>{{ isLocating ? '定位中...' : '定位' }}</span>
+              </button>
+            </div>
             <div class="flex gap-2">
-              <button @click="refundForm.type = '仅退款'"
-                :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '仅退款' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">仅退款</button>
-              <button @click="refundForm.type = '退款退货'"
-                :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '退款退货' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">退货退款</button>
+              <span v-for="t in ['家', '公司', '学校']" :key="t" @click="newAddress.tag = t"
+                :class="['text-xs px-4 py-2 rounded-xl cursor-pointer border transition font-medium', newAddress.tag === t ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100']">{{
+                t }}</span>
             </div>
           </div>
-          <div><label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label><textarea
-              v-model="refundForm.reason" placeholder="请描述您遇到的问题..." class="input-field h-24 resize-none"></textarea>
+          <div class="flex gap-3 mt-8">
+            <button @click="showAddressModal = false"
+              class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button>
+            <button @click="saveAddress"
+              class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition font-bold transform active:scale-95">保存</button>
           </div>
         </div>
-        <div class="flex gap-3 mt-8">
-          <button @click="showRefundModal = false"
-            class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button>
-          <button @click="submitRefund"
-            class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 transition font-bold">提交申请</button>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div v-if="showRefundModal"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl animate-scale-up border border-white/50">
+          <h3 class="text-xl font-black text-slate-800 mb-2">申请售后</h3>
+          <p class="text-sm text-slate-500 mb-6">订单 #{{ 20250000 + refundForm.orderId }}</p>
+          <div class="bg-slate-50 p-4 rounded-xl mb-4 flex gap-3">
+            <div class="text-2xl">📦</div>
+            <div>
+              <div class="font-bold text-sm text-slate-700 line-clamp-1">{{ refundForm.productNames }}</div>
+              <div class="text-xs text-slate-400">退款金额: ¥{{ refundForm.amount }}</div>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <label class="text-xs font-bold text-slate-500 mb-1 block">售后类型</label>
+              <div class="flex gap-2">
+                <button @click="refundForm.type = '仅退款'"
+                  :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '仅退款' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">仅退款</button>
+                <button @click="refundForm.type = '退款退货'"
+                  :class="['flex-1 py-2 text-xs rounded-xl border', refundForm.type === '退款退货' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500']">退货退款</button>
+              </div>
+            </div>
+            <div><label class="text-xs font-bold text-slate-500 mb-1 block">申请原因</label><textarea
+                v-model="refundForm.reason" placeholder="请描述您遇到的问题..." class="input-field h-24 resize-none"></textarea>
+            </div>
+          </div>
+          <div class="flex gap-3 mt-8">
+            <button @click="showRefundModal = false"
+              class="flex-1 py-3.5 text-slate-500 hover:bg-slate-50 rounded-2xl font-bold transition">取消</button>
+            <button @click="submitRefund"
+              class="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 transition font-bold">提交申请</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 

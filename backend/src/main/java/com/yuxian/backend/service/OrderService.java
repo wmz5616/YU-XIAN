@@ -15,7 +15,7 @@ public interface OrderService {
 
     void auditRefund(Long orderId, boolean pass, String rejectReason, String adminUsername);
 
-    void payOrder(Long orderId, String username);
+    void payOrder(Long orderId, String username, String paymentMethod);
 
     List<RefundDetailVO> getPendingRefundsWithDetails();
 }

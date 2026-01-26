@@ -118,12 +118,13 @@ public class ProductController {
         result.put("priceHistory", priceHistory);
 
         List<Map<String, Object>> traceEvents = new ArrayList<>();
-        LocalDate catchDate = product.getListDate().minusDays(2);
+        LocalDate catchDate = today.minusDays(2);
+        LocalDate transitDate = today.minusDays(1);
         traceEvents.add(
                 createTraceEvent(catchDate.toString() + " 04:30", "捕捞作业完成", "作业渔船：浙普渔" + (60000 + id * 123) + "号"));
-        traceEvents.add(createTraceEvent(catchDate.plusDays(1).toString() + " 09:15", "港口卸货入库", "鲜度等级：特A级"));
-        traceEvents.add(createTraceEvent(product.getListDate().toString() + " 02:00", "全程冷链运输中", "库温：-18.5°C"));
-        traceEvents.add(createTraceEvent(product.getListDate().toString() + " 08:00", "到达城市前置仓", "已上架"));
+        traceEvents.add(createTraceEvent(transitDate.toString() + " 09:15", "港口卸货入库", "鲜度等级：特A级"));
+        traceEvents.add(createTraceEvent(today.toString() + " 02:00", "全程冷链运输中", "库温：-18.5°C"));
+        traceEvents.add(createTraceEvent(today.toString() + " 08:00", "到达城市前置仓", "已上架"));
         result.put("traceEvents", traceEvents);
 
         String origin = product.getOrigin() != null ? product.getOrigin() : "";
@@ -179,6 +180,14 @@ public class ProductController {
 
     @DeleteMapping("/order/{id}")
     public Map<String, String> deleteOrder(@PathVariable Long id) {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+        OrderRecord order = orderRepository.findById(id).orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!order.getUsername().equals(username)) {
+            throw new RuntimeException("无权删除此订单");
+        }
+
         orderRepository.deleteById(id);
         Map<String, String> response = new HashMap<>();
         response.put("message", "订单已删除");
@@ -196,9 +205,16 @@ public class ProductController {
     @PostMapping("/order/{id}/receive")
     @Transactional
     public ResponseEntity<?> confirmReceipt(@PathVariable Long id) {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
         OrderRecord order = orderRepository.findById(id).orElse(null);
         if (order == null)
             return ResponseEntity.badRequest().body("订单不存在");
+
+        if (!order.getUsername().equals(username)) {
+            return ResponseEntity.status(403).body("无权操作此订单");
+        }
+
         if ("已送达".equals(order.getStatus()))
             return ResponseEntity.badRequest().body("订单已完成");
 

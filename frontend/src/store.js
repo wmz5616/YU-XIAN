@@ -10,22 +10,22 @@ const savedCart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
 
 const savedLogs = JSON.parse(
   localStorage.getItem(LOGS_KEY) ||
-    JSON.stringify([
-      {
-        id: 1,
-        type: "income",
-        title: "系统奖励",
-        amount: 100,
-        time: new Date().toLocaleString(),
-      },
-      {
-        id: 2,
-        type: "income",
-        title: "首次登录",
-        amount: 50,
-        time: new Date().toLocaleString(),
-      },
-    ])
+  JSON.stringify([
+    {
+      id: 1,
+      type: "income",
+      title: "系统奖励",
+      amount: 100,
+      time: new Date().toLocaleString(),
+    },
+    {
+      id: 2,
+      type: "income",
+      title: "首次登录",
+      amount: 50,
+      time: new Date().toLocaleString(),
+    },
+  ])
 );
 
 export const store = reactive({
@@ -144,7 +144,7 @@ export const store = reactive({
     };
   },
 
-  login(user) {
+  login(user, silent = false) {
     this.currentUser = user;
     if (this.currentUser.points === undefined) {
       this.currentUser.points = 0;
@@ -152,7 +152,9 @@ export const store = reactive({
     const userToSave = { ...this.currentUser };
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(userToSave));
-      this.showNotification(`欢迎回来，${user.displayName || user.username}！`);
+      if (!silent) {
+        this.showNotification(`欢迎回来，${user.displayName || user.username}！`);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -171,8 +173,8 @@ export const store = reactive({
     this.notification.message = msg;
     this.notification.type = type;
     this.notification.show = true;
-    
-    if (type === 'loading') return; 
+
+    if (type === 'loading') return;
 
     if (this.notificationTimer) clearTimeout(this.notificationTimer);
     this.notificationTimer = setTimeout(() => {
