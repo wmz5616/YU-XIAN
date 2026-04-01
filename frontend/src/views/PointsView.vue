@@ -160,9 +160,8 @@ const handleSignIn = async () => {
                         <span class="text-[10px] text-white font-bold mt-1 tracking-wider">已签到</span>
                      </template>
                      <template v-else>
-                        <span class="text-4xl mb-1 filter drop-shadow-lg transform group-hover/sign:-translate-y-1 transition-transform">📅</span>
+                        <span class="text-4xl mb-1 filter drop-shadow-lg transform group-hover/sign:-translate-y-1 transition-transform"></span>
                         <span class="text-sm font-bold text-white tracking-widest drop-shadow-md">签到</span>
-                        <span class="text-[10px] text-cyan-100 mt-1 font-mono">+Points</span>
                      </template>
                   </div>
                   

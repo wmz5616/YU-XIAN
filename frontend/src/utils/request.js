@@ -1,55 +1,58 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
-const service = async (url, options = {}) => {
-  const fullUrl = url.startsWith("http")
-    ? url
-    : `${API_BASE}${url.startsWith("/") ? url : "/" + url}`;
+import axios from 'axios';
 
-  const token = localStorage.getItem("yuxian_token");
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
+
+const service = axios.create({
+  baseURL: API_BASE,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+service.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('yuxian_token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => {
+    console.error('Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+service.interceptors.response.use(
+  response => {
+    return response.data;
+  },
+  error => {
+    console.error('API Error:', error);
+    const message = error.response?.data?.message || error.message || '请求失败';
+    return Promise.reject(new Error(message));
+  }
+);
+
+const requestFn = (url, options = {}) => {
+  const { body, ...rest } = options;
+  const config = {
+    url,
+    ...rest
   };
 
-  try {
-    const response = await fetch(fullUrl, { ...options, headers });
-    if (!response.ok) {
-      const errorText = await response.text();
-      try {
-        const json = JSON.parse(errorText);
-        throw new Error(json.message || `错误 ${response.status}`);
-      } catch (e) {
-        throw new Error(errorText || `请求失败: ${response.status}`);
-      }
-    }
-
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("application/json")) {
-      return await response.json();
-    }
-    return await response.text();
-  } catch (error) {
-    console.error("API Error:", error);
-    throw error;
+  if (body && !config.data) {
+    config.data = body;
   }
+
+  return service(config);
 };
 
-const methodHelper = {
-  get: (url) => service(url, { method: "GET" }),
-  post: (url, data) =>
-    service(url, { method: "POST", body: JSON.stringify(data) }),
-  put: (url, data) =>
-    service(url, { method: "PUT", body: JSON.stringify(data) }),
-  del: (url) => service(url, { method: "DELETE" }),
-  call: service,
-};
-
-const requestFn = (url, options) => service(url, options);
-
-requestFn.get = methodHelper.get;
-requestFn.post = methodHelper.post;
-requestFn.put = methodHelper.put;
-requestFn.delete = methodHelper.del;
+requestFn.get = (url, config) => service.get(url, config);
+requestFn.post = (url, data, config) => service.post(url, data, config);
+requestFn.put = (url, data, config) => service.put(url, data, config);
+requestFn.delete = (url, config) => service.delete(url, config);
 
 export const request = requestFn;
 export default requestFn;

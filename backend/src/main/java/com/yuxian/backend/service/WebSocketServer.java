@@ -60,8 +60,6 @@ public class WebSocketServer {
         System.out.println("【WebSocket】连接断开，当前在线人数：" + webSocketSet.size());
     }
 
-    // ... onMessage, onError unchanged ...
-
     public static void sendInfo(String message) {
         for (WebSocketServer item : webSocketSet) {
             try {

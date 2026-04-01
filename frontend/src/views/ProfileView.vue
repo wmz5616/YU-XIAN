@@ -264,8 +264,8 @@ const handleAvatarUpload = async (event) => {
   }
 }
 
-const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u, true); showAddressModal.value = false; }
-const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: JSON.stringify({ username: store.currentUser.username, addresses: addrs }) }); store.login(u, true); }
+const saveAddress = async () => { if (!newAddress.value.contact) return; const addrs = [...(store.currentUser.addresses || []), { ...newAddress.value, isDefault: (store.currentUser.addresses || []).length === 0 }]; const u = await request('/api/users/address', { method: 'POST', body: { username: store.currentUser.username, addresses: addrs } }); store.login(u, true); showAddressModal.value = false; }
+const removeAddress = async (idx) => { const addrs = [...store.currentUser.addresses]; addrs.splice(idx, 1); const u = await request('/api/users/address', { method: 'POST', body: { username: store.currentUser.username, addresses: addrs } }); store.login(u, true); }
 
 const locateUser = () => {
   if (typeof AMap === 'undefined') {

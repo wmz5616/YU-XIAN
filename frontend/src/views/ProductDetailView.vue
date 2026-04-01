@@ -66,7 +66,51 @@ const typeWriterEffect = async (fullText) => {
     if (!showAiChat.value) break;
 
     msg.content += fullText[i]
-    msg.html = md.render(msg.content)
+    let renderedHtml = md.render(msg.content)
+    
+    const douyinRegex = /<a href="(https?:\/\/(?:[a-v0-9]+\.)?(?:douyin\.com)\/[^"]+)"[^>]*>(.*?)<\/a>/g
+    msg.html = renderedHtml.replace(douyinRegex, (match, url, title) => {
+      const gradients = [
+        'from-fuchsia-600 to-cyan-500',
+        'from-rose-500 to-indigo-600',
+        'from-emerald-500 to-blue-600',
+        'from-amber-400 to-pink-500'
+      ]
+      const gradient = gradients[Math.floor(Math.random() * gradients.length)]
+      
+      return `
+        <div class="video-card my-4 p-0 rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-lg transition-all hover:shadow-xl hover:-translate-y-1 group">
+          <div class="aspect-video relative cursor-pointer overflow-hidden flex items-center justify-center bg-slate-900" onclick="window.open('${url}', '_blank')">
+            <!-- 艺术占位图 -->
+            <div class="absolute inset-0 bg-gradient-to-br ${gradient} opacity-80 group-hover:scale-110 transition-transform duration-700"></div>
+            <div class="absolute inset-0 bg-[url('https://www.douyin.com/favicon.ico')] bg-no-repeat bg-center opacity-10 scale-[5]"></div>
+            <div class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
+               <div class="w-14 h-14 rounded-full bg-white/30 backdrop-blur-xl flex items-center justify-center text-white shadow-2xl transition group-hover:scale-110 group-active:scale-95 border border-white/40">
+                 <svg class="w-6 h-6 fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+               </div>
+               <div class="mt-4 text-white font-black text-sm drop-shadow-lg line-clamp-2">${title || '抖音美食教程'}</div>
+            </div>
+            
+            <!-- 品牌标识 -->
+            <div class="absolute top-3 left-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded-md flex items-center gap-1.5 border border-white/10 z-20">
+               <div class="w-4 h-4 rounded-sm bg-gradient-to-br from-pink-500 via-cyan-400 to-white flex items-center justify-center p-0.5">
+                  <span class="text-[8px] font-black text-black">d</span>
+               </div>
+               <span class="text-[10px] text-white font-bold tracking-tighter">抖音短视频</span>
+            </div>
+            
+            <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
+          </div>
+          <div class="px-4 py-3 bg-slate-50/50 flex items-center justify-between border-t border-slate-100">
+            <div class="flex flex-col">
+               <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tutorial Source</span>
+               <span class="text-xs text-slate-600 font-medium">点击跳转观看完整版</span>
+            </div>
+            <svg class="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      `
+    })
     scrollToBottom()
     await new Promise(r => setTimeout(r, speed))
   }

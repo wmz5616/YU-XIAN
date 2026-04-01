@@ -3,7 +3,6 @@ package com.yuxian.backend.controller;
 import com.yuxian.backend.entity.Address;
 import com.yuxian.backend.service.OrderService;
 import com.yuxian.backend.entity.OrderRecord;
-import com.yuxian.backend.repository.OrderRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,18 +16,15 @@ import java.util.Map;
 public class OrderController {
 
     private final OrderService orderService;
-    private final OrderRepository orderRepository;
 
-    public OrderController(OrderService orderService, OrderRepository orderRepository) {
+    public OrderController(OrderService orderService) {
         this.orderService = orderService;
-        this.orderRepository = orderRepository;
     }
 
     @GetMapping
     public ResponseEntity<List<OrderRecord>> getMyOrders() {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        List<OrderRecord> orders = orderRepository.findByUsernameOrderByCreateTimeDesc(username);
-        return ResponseEntity.ok(orders);
+        return ResponseEntity.ok(orderService.getMyOrders(username));
     }
 
     @PostMapping
@@ -98,18 +94,11 @@ public class OrderController {
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteOrder(@PathVariable Long id) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        OrderRecord order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("订单不存在"));
-
-        if (!order.getUsername().equals(username)) {
-            return ResponseEntity.status(403).body("无权删除此订单");
+        try {
+            orderService.deleteOrder(id, username);
+            return ResponseEntity.ok("订单已删除/取消");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-
-        if ("售后处理中".equals(order.getStatus())) {
-            return ResponseEntity.badRequest().body("售后处理中的订单不可删除");
-        }
-
-        orderRepository.delete(order);
-        return ResponseEntity.ok("订单已删除");
     }
-}
+}

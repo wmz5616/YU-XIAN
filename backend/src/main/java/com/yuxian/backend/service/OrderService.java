@@ -18,4 +18,7 @@ public interface OrderService {
     void payOrder(Long orderId, String username, String paymentMethod);
 
     List<RefundDetailVO> getPendingRefundsWithDetails();
+    
+    List<OrderRecord> getMyOrders(String username);
+    void deleteOrder(Long orderId, String username);
 }

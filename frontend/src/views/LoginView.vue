@@ -20,7 +20,7 @@ const handleLogin = async () => {
   try {
     const data = await request('/api/users/login', {
       method: 'POST',
-      body: JSON.stringify(form.value)
+      body: form.value
     })
 
     store.login(data.user)

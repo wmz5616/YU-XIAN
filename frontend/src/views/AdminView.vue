@@ -46,8 +46,18 @@ const showPointModal = ref(false);
 const editingUser = ref({});
 
 const Toast = Swal.mixin({
-    toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
-    didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+    customClass: {
+        container: 'admin-toast-container'
+    },
+    didOpen: (toast) => {
+        toast.addEventListener('mouseenter', Swal.stopTimer);
+        toast.addEventListener('mouseleave', Swal.resumeTimer);
+    }
 });
 
 const currentPageTitle = computed(() => {
@@ -66,9 +76,11 @@ watch(() => route.path, () => { isSidebarOpen.value = false; });
 let socket = null;
 const initWebSocket = () => {
     if (typeof (WebSocket) === "undefined") return;
-    const token = localStorage.getItem('token') || '';
+    const token = localStorage.getItem('yuxian_token') || '';
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+    const host = apiBase.replace(/^https?:\/\//, '');
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${protocol}localhost:8080/ws/orders?token=${token}`;
+    const wsUrl = `${protocol}${host}/ws/orders?token=${token}`;
 
     socket = new WebSocket(wsUrl);
 

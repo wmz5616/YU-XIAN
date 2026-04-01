@@ -151,7 +151,6 @@ public class OrderServiceImpl implements OrderService {
             throw new RuntimeException("订单状态异常，无法支付");
         }
 
-        // Balance Payment Logic
         if ("BALANCE".equals(paymentMethod)) {
             User user = userRepository.findByUsername(username);
             if (user == null)
@@ -162,16 +161,13 @@ public class OrderServiceImpl implements OrderService {
                 throw new RuntimeException("余额不足，请充值或选择其他支付方式");
             }
 
-            // Deduct Balance
             user.setBalance(currentBalance.subtract(order.getTotalPrice()));
-            userRepository.save(user); // Optimistic locking handled by @Version if present
+            userRepository.save(user);
 
-            // Log
             WalletLog log = new WalletLog();
             log.setUserId(user.getId());
-            log.setAmount(order.getTotalPrice().negate()); // Expense is negative or just tracked as Type 2? usually
-                                                           // separate type.
-            log.setType(2); // 2 = Payment
+            log.setAmount(order.getTotalPrice().negate());
+            log.setType(2);
             log.setDescription("购买商品：" + order.getProductNames());
             walletLogRepository.save(log);
 
@@ -213,7 +209,6 @@ public class OrderServiceImpl implements OrderService {
         feedback.setOperator(username);
         refundFeedbackRepository.save(feedback);
 
-        // Notify admins about new refund request
         try {
             WebSocketServer.sendInfo("NEW_REFUND");
         } catch (Exception e) {
@@ -246,7 +241,6 @@ public class OrderServiceImpl implements OrderService {
             order.setStatus("退款成功");
             adminFeedback.setContent("审核通过");
 
-            // Refund to Balance
             User user = userRepository.findByUsername(order.getUsername());
             if (user != null) {
                 BigDecimal currentBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
@@ -256,13 +250,18 @@ public class OrderServiceImpl implements OrderService {
                 WalletLog log = new WalletLog();
                 log.setUserId(user.getId());
                 log.setAmount(order.getTotalPrice());
-                log.setType(1); // 1 = Refund
+                log.setType(1);
                 log.setDescription("订单退款: " + orderId);
                 walletLogRepository.save(log);
 
                 WebSocketServer.sendToUser(user.getUsername(), "【系统消息】您的订单退款已到账，金额：" + order.getTotalPrice());
             }
 
+            if (order.getItems() != null) {
+                for (OrderItem item : order.getItems()) {
+                    productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                }
+            }
         } else {
             order.setStatus("已送达");
             adminFeedback.setContent("审核驳回，原因：" + (reason != null ? reason : "无"));
@@ -298,5 +297,34 @@ public class OrderServiceImpl implements OrderService {
                     order.getCreateTime()));
         }
         return result;
+    }
+
+    @Override
+    public List<OrderRecord> getMyOrders(String username) {
+        return orderRepository.findByUsernameOrderByCreateTimeDesc(username);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteOrder(Long orderId, String username) {
+        OrderRecord order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!order.getUsername().equals(username)) {
+            throw new RuntimeException("无权操作此订单");
+        }
+
+        String status = order.getStatus();
+        if (!"UNPAID".equals(status) && !"CANCELLED".equals(status)) {
+            throw new RuntimeException("当前订单状态不允许删除或取消");
+        }
+
+        if ("UNPAID".equals(status) && order.getItems() != null) {
+            for (OrderItem item : order.getItems()) {
+                productRepository.increaseStock(item.getProductId(), item.getQuantity());
+            }
+        }
+
+        orderRepository.delete(order);
     }
 }

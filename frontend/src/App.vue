@@ -18,7 +18,11 @@ const handleScroll = () => {
 let userSocket = null
 const initUserWebSocket = () => {
   if (!store.currentUser || typeof WebSocket === 'undefined') return
-  if (userSocket) userSocket.close()
+  if (userSocket) {
+    if (userSocket.readyState === WebSocket.CONNECTING || userSocket.readyState === WebSocket.OPEN) {
+      userSocket.close()
+    }
+  }
   
   const token = localStorage.getItem('yuxian_token') || ''
   if (!token) return
@@ -69,9 +73,6 @@ watch(() => store.currentUser, (newUser) => {
 
 onMounted(() => {
   window.addEventListener('scroll', handleScroll)
-  if (store.currentUser) {
-    initUserWebSocket()
-  }
 })
 
 onUnmounted(() => {

@@ -21,7 +21,7 @@ public interface OrderRepository extends JpaRepository<OrderRecord, Long> {
     Page<OrderRecord> findByUsernameContainingAndStatusOrderByCreateTimeDesc(String username, String status,
             Pageable pageable);
 
-    @Query("SELECT COALESCE(SUM(o.totalPrice), 0.00) FROM OrderRecord o")
+    @Query("SELECT COALESCE(SUM(o.totalPrice), 0.00) FROM OrderRecord o WHERE o.status NOT IN ('UNPAID', 'CANCELLED', 'REFUNDED', 'PENDING_REFUND')")
     BigDecimal sumTotalSales();
 
     List<OrderRecord> findByCreateTimeAfter(LocalDateTime time);

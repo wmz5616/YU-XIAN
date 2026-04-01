@@ -22,7 +22,7 @@ const handleRegister = async () => {
   try {
     const data = await request('/api/users/register', {
       method: 'POST',
-      body: JSON.stringify(form.value)
+      body: form.value
     })
 
     if (data.success) {
@@ -49,27 +49,24 @@ const handleRegister = async () => {
 
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-2">
-            会员名 <span class="text-xs font-normal text-slate-400">(唯一ID)</span>
+            会员名
           </label>
           <input v-model="form.username" type="text" required
-            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition font-mono text-sm"
-            placeholder="例: abc123 (小写字母+数字, ≤7位)">
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition font-mono text-sm">
         </div>
 
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-2">
-            用户名 <span class="text-xs font-normal text-slate-400">(昵称，可重复)</span>
+            用户名
           </label>
           <input v-model="form.displayName" type="text"
-            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition"
-            placeholder="例: 测试1">
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition">
         </div>
 
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-2">密码</label>
           <input v-model="form.password" type="password" required
-            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition"
-            placeholder="设置您的登录密码">
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition">
         </div>
 
         <button type="submit"

@@ -200,7 +200,7 @@ const saveAddress = async () => {
   try {
     const updatedUser = await request('/api/users/address', {
       method: 'POST',
-      body: JSON.stringify({ username: store.currentUser.username, addresses: updatedAddresses })
+      body: { username: store.currentUser.username, addresses: updatedAddresses }
     })
     store.login(updatedUser, true)
     showAddressModal.value = false
@@ -257,7 +257,14 @@ const submitOrder = async () => {
       }
     })
 
-    await request.post(`/api/orders/${orderId}/pay`)
+    const payMethod = paymentMethod.value === 'balance' ? 'BALANCE' : 'NORMAL'
+    await request.post(`/api/orders/${orderId}/pay`, { method: payMethod })
+
+    if (payMethod === 'BALANCE' && store.currentUser) {
+      const newBalance = parseFloat(store.currentUser.balance || 0) - parseFloat(finalPrice.value)
+      store.currentUser.balance = newBalance > 0 ? newBalance : 0
+      localStorage.setItem('yuxian_user', JSON.stringify(store.currentUser))
+    }
 
     if (typeof store.clearCart === 'function') {
       store.clearCart()
