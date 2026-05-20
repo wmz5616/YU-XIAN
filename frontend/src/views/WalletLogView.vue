@@ -19,6 +19,31 @@ const fetchLogs = async () => {
     }
 }
 
+const handleRecharge = async () => {
+    const val = prompt('请输入充值金额（元）：', '100')
+    if (val === null) return
+    const amount = parseFloat(val)
+    if (isNaN(amount) || amount <= 0) {
+        alert('请输入有效的充值金额')
+        return
+    }
+    try {
+        store.showNotification('正在充值...', 'loading')
+        const res = await request.post('/api/wallet/recharge', { amount })
+        if (res && res.success) {
+            store.currentUser.balance = res.balance
+            localStorage.setItem('yuxian_user', JSON.stringify(store.currentUser))
+            store.showNotification(`充值成功！充值金额: ¥${amount.toFixed(2)}`, 'success')
+            fetchLogs()
+        } else {
+            store.showNotification(res.message || '充值失败', 'error')
+        }
+    } catch (e) {
+        console.error(e)
+        store.showNotification(e.message || '充值接口调用异常', 'error')
+    }
+}
+
 const formatDate = (iso) => new Date(iso).toLocaleString()
 
 onMounted(() => {
@@ -37,10 +62,10 @@ onMounted(() => {
             <div class="absolute -right-20 -top-20 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl"></div>
             
             <div class="container mx-auto px-6 relative z-10">
-                <div class="flex iems-center gap-4 mb-8 text-slate-400 cursor-pointer hover:text-white transition" @click="router.back()">
+                <div class="flex items-center gap-4 mb-8 text-slate-400 cursor-pointer hover:text-white transition" @click="router.back()">
                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                    </svg>
+                     </svg>
                     <span>返回</span>
                 </div>
                 
@@ -52,7 +77,7 @@ onMounted(() => {
                         </div>
                     </div>
                     <div class="hidden sm:block">
-                        <button class="bg-white/10 hover:bg-white/20 border border-white/20 text-white px-6 py-2 rounded-full text-sm font-bold transition backdrop-blur-md">
+                        <button @click="handleRecharge" class="bg-white/10 hover:bg-white/20 border border-white/20 text-white px-6 py-2 rounded-full text-sm font-bold transition backdrop-blur-md">
                             充值 / Recharge
                         </button>
                     </div>
@@ -77,7 +102,6 @@ onMounted(() => {
                 </div>
 
                 <div v-else-if="logs.length === 0" class="p-16 text-center text-slate-400 flex flex-col items-center">
-                    <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-2xl">🍃</div>
                     暂无资金记录
                 </div>
 

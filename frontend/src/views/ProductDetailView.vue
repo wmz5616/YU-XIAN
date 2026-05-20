@@ -18,6 +18,9 @@ const buyCount = ref(1)
 const isAdding = ref(false)
 const mapInstance = ref(null)
 
+const reminderInfo = ref({ count: 0, hasReminded: false })
+const reminderLoading = ref(false)
+
 const showAiChat = ref(false)
 const aiLoading = ref(false)
 const aiTyping = ref(false)
@@ -356,8 +359,36 @@ onMounted(async () => {
     nextTick(() => { initChart(); initMap() })
     updateEnvironment()
     environmentInterval = setInterval(updateEnvironment, 2000)
+    fetchReminderInfo(id)
   } catch (error) { console.error(error) }
 })
+
+const fetchReminderInfo = async (productId) => {
+  try {
+    const res = await request.get(`/api/products/${productId}/reminder-count`)
+    reminderInfo.value = res
+  } catch (e) { console.error(e) }
+}
+
+const submitReminder = async () => {
+  if (!product.value || reminderLoading.value) return
+  if (!store.currentUser) {
+    store.showNotification('请先登录', 'warning')
+    return
+  }
+  reminderLoading.value = true
+  try {
+    const res = await request.post(`/api/products/${product.value.id}/restock-remind`)
+    reminderInfo.value.hasReminded = true
+    reminderInfo.value.count = res.totalReminders || (reminderInfo.value.count + 1)
+    store.showNotification('补货提醒已发送给商家！')
+  } catch (e) {
+    const msg = e?.response?.data?.message || e?.data?.message || '您已提交过补货提醒'
+    store.showNotification(msg, 'warning')
+  } finally {
+    reminderLoading.value = false
+  }
+}
 
 onUnmounted(() => { 
   if (mapInstance.value) mapInstance.value.destroy()
@@ -428,6 +459,30 @@ watch(() => route.params.id, () => { window.location.reload() })
               </div>
               <span class="text-xs font-bold" :class="product.stock < 10 ? 'text-red-500' : 'text-slate-500'">库存: {{
                 product.stock }} {{ getUnit(product.name) }}</span>
+            </div>
+
+            <div v-if="product.stock <= 20" class="mt-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-3 border border-orange-100">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="text-lg">🔔</span>
+                  <div>
+                    <span v-if="product.stock === 0" class="text-red-600 font-bold">该商品已售罄</span>
+                    <span v-else class="text-amber-700 font-bold">库存紧张</span>
+                    <span v-if="reminderInfo.count > 0" class="text-slate-500 ml-1">· {{ reminderInfo.count }} 人已催补</span>
+                  </div>
+                </div>
+                <button
+                  v-if="!reminderInfo.hasReminded"
+                  @click="submitReminder"
+                  :disabled="reminderLoading"
+                  class="flex-shrink-0 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 active:scale-95 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1">
+                  <span v-if="reminderLoading" class="animate-spin w-3 h-3 border border-white/30 border-t-white rounded-full"></span>
+                  <span>{{ reminderLoading ? '发送中...' : '提醒补货' }}</span>
+                </button>
+                <span v-else class="flex-shrink-0 px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg flex items-center gap-1">
+                  ✓ 已提醒
+                </span>
+              </div>
             </div>
           </div>
 

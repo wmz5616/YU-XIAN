@@ -110,8 +110,27 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public void updateOrderStatus(Long id, String status) {
         orderRepository.findById(id).ifPresent(order -> {
+            String oldStatus = order.getStatus();
+
+            java.util.Set<String> stockDeductedStatuses = java.util.Set.of(
+                    "UNPAID", "PAID", "已送达", "DELIVERED", "配送中", "SHIPPING",
+                    "售后处理中", "退款成功", "REFUNDED");
+
+            boolean oldHasStock = stockDeductedStatuses.contains(oldStatus);
+            boolean isCancelling = "CANCELLED".equals(status);
+
+            if (isCancelling && oldHasStock && order.getItems() != null) {
+                for (com.yuxian.backend.entity.OrderItem item : order.getItems()) {
+                    int rows = productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                    if (rows == 0) {
+                        System.err.println("管理员取消订单-库存回滚失败: 商品ID=" + item.getProductId());
+                    }
+                }
+            }
+
             order.setStatus(status);
             orderRepository.save(order);
         });

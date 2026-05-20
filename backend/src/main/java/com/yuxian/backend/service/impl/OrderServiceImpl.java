@@ -258,8 +258,17 @@ public class OrderServiceImpl implements OrderService {
             }
 
             if (order.getItems() != null) {
-                for (OrderItem item : order.getItems()) {
-                    productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                List<RefundFeedback> feedbacks = refundFeedbackRepository.findByOrderIdOrderByCreateTimeAsc(orderId);
+                boolean isReturnRefund = feedbacks.stream()
+                        .anyMatch(f -> f.getType() != null && f.getType() == 2);
+
+                if (isReturnRefund) {
+                    for (OrderItem item : order.getItems()) {
+                        int rows = productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                        if (rows == 0) {
+                            System.err.println("库存回滚失败: 商品ID=" + item.getProductId() + " 可能已被删除");
+                        }
+                    }
                 }
             }
         } else {
@@ -315,14 +324,26 @@ public class OrderServiceImpl implements OrderService {
         }
 
         String status = order.getStatus();
-        if (!"UNPAID".equals(status) && !"CANCELLED".equals(status)) {
+        if (!"UNPAID".equals(status) 
+                && !"CANCELLED".equals(status)
+                && !"已送达".equals(status)
+                && !"退款成功".equals(status)
+                && !"已退货".equals(status)) {
             throw new RuntimeException("当前订单状态不允许删除或取消");
         }
 
         if ("UNPAID".equals(status) && order.getItems() != null) {
             for (OrderItem item : order.getItems()) {
-                productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                int rows = productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                if (rows == 0) {
+                    System.err.println("删除订单-库存回滚失败: 商品ID=" + item.getProductId() + " 可能已被删除");
+                }
             }
+        }
+
+        List<RefundFeedback> feedbacks = refundFeedbackRepository.findByOrderId(orderId);
+        if (!feedbacks.isEmpty()) {
+            refundFeedbackRepository.deleteAll(feedbacks);
         }
 
         orderRepository.delete(order);

@@ -591,7 +591,6 @@ const getStatusColor = (s) => {
               </div>
             </div>
             <div v-if="afterSalesOrders.length === 0" class="empty-state">
-              <div class="text-6xl mb-4 opacity-20">📭</div>
               <p class="text-slate-500">暂无售后记录</p>
             </div>
             <div v-for="order in paginatedAfterSales" :key="order.id"

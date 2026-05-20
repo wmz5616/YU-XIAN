@@ -46,7 +46,10 @@ public class OrderTimeoutTask {
             if (order.getItems() != null) {
                 for (OrderItem item : order.getItems()) {
                     System.out.println("  回滚库存: 商品ID=" + item.getProductId() + ", 数量=" + item.getQuantity());
-                    productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                    int rows = productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                    if (rows == 0) {
+                        System.err.println("  库存回滚失败: 商品ID=" + item.getProductId() + " 可能已被删除");
+                    }
                 }
             }
 

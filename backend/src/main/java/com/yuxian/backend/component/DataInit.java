@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 @Component
 public class DataInit implements CommandLineRunner {
 
@@ -28,15 +29,18 @@ public class DataInit implements CommandLineRunner {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final CouponRepository couponRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public DataInit(ProductRepository productRepository,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            CouponRepository couponRepository) {
+            CouponRepository couponRepository,
+            JdbcTemplate jdbcTemplate) {
         this.productRepository = productRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.couponRepository = couponRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     private static final Map<String, double[]> PRICE_RANGES = new HashMap<>();
@@ -86,6 +90,15 @@ public class DataInit implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        jdbcTemplate.update("UPDATE product SET version = 0 WHERE version IS NULL");
+        
+        try {
+            jdbcTemplate.execute("ALTER TABLE product MODIFY COLUMN image_url VARCHAR(2000)");
+            jdbcTemplate.execute("ALTER TABLE product MODIFY COLUMN description TEXT");
+        } catch (Exception e) {
+            System.err.println("尝试更新表结构失败，或表不存在: " + e.getMessage());
+        }
+
         if (productRepository.count() == 0) {
             System.out.println(">>> 正在初始化商品数据...");
             ClassPathResource resource = new ClassPathResource("data.txt");

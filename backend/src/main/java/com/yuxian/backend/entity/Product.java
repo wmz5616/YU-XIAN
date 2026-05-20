@@ -8,6 +8,7 @@ import jakarta.persistence.Version;
 import lombok.Data;
 import java.time.LocalDate;
 import java.math.BigDecimal;
+import jakarta.persistence.Column;
 
 @Data 
 @Entity
@@ -20,12 +21,14 @@ public class Product {
     private String name;
     private String origin;
     private LocalDate listDate;
+    @Column(columnDefinition = "TEXT")
     private String description;
     private BigDecimal price; 
     
     private Integer stock;
+    @Column(length = 2000)
     private String imageUrl;
 
     @Version
-    private Integer version;
+    private Integer version = 0;
 }

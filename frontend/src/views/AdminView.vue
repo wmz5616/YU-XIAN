@@ -41,6 +41,10 @@ const products = ref([]);
 const showProductModal = ref(false);
 const editingProduct = ref({});
 
+const stockOverview = ref({ categories: [], totalProducts: 0, totalStock: 0, lowStockCount: 0, outOfStockCount: 0, pendingReminders: 0 });
+const expandedCategories = ref(new Set());
+const restockReminders = ref([]);
+
 const users = ref([]);
 const showPointModal = ref(false);
 const editingUser = ref({});
@@ -66,7 +70,8 @@ const currentPageTitle = computed(() => {
         'orders': '订单管理',
         'products': '商品库管理',
         'users': '会员管理',
-        'refund': '售后处理中心'
+        'refund': '售后处理中心',
+        'inventory': '库存管理'
     }
     return map[currentTab.value] || '控制台'
 })
@@ -74,6 +79,17 @@ const currentPageTitle = computed(() => {
 watch(() => route.path, () => { isSidebarOpen.value = false; });
 
 let socket = null;
+const playNotificationSound = () => {
+    try {
+        const audio = new Audio('/audio/ding.mp3');
+        audio.play().catch(e => {
+            console.warn('Play audio failed due to browser policies:', e);
+        });
+    } catch (e) {
+        console.error('Audio play error:', e);
+    }
+};
+
 const initWebSocket = () => {
     if (typeof (WebSocket) === "undefined") return;
     const token = localStorage.getItem('yuxian_token') || '';
@@ -90,6 +106,7 @@ const initWebSocket = () => {
 
     socket.onmessage = (msg) => {
         if (msg.data === 'NEW_ORDER') {
+            playNotificationSound();
             Toast.fire({ icon: 'info', title: '🔔 收到新订单！', text: '列表已自动刷新' });
             if (currentTab.value === 'dashboard' || currentTab.value === 'orders') {
                 fetchStats();
@@ -97,9 +114,18 @@ const initWebSocket = () => {
             }
         }
         if (msg.data === 'NEW_REFUND') {
+            playNotificationSound();
             Toast.fire({ icon: 'warning', title: '📝 收到新的售后申请！', text: '请及时处理' });
             if (currentTab.value === 'refund') {
                 fetchRefunds();
+            }
+        }
+        if (msg.data === 'RESTOCK_REMIND') {
+            playNotificationSound();
+            Toast.fire({ icon: 'info', title: '🔔 收到新的补货提醒！', text: '用户反馈库存不足' });
+            if (currentTab.value === 'inventory') {
+                fetchStockOverview();
+                fetchRestockReminders();
             }
         }
     };
@@ -231,7 +257,7 @@ const fetchProducts = async () => {
     try { await new Promise(r => setTimeout(r, 300)); const res = await request.get('/api/products'); products.value = res || []; }
     finally { loading.value = false; }
 };
-const openProductModal = (p) => { editingProduct.value = p ? { ...p } : { name: '', price: 0, stock: 100 }; showProductModal.value = true; };
+const openProductModal = (p) => { editingProduct.value = p ? { ...p } : { name: '', price: 0, stock: 100, category: '鱼类', origin: '', imageUrl: '', description: '' }; showProductModal.value = true; };
 const saveProduct = async () => {
     try {
         if (editingProduct.value.id) await request.put(`/api/products/${editingProduct.value.id}`, editingProduct.value);
@@ -239,7 +265,130 @@ const saveProduct = async () => {
         showProductModal.value = false; fetchProducts(); Toast.fire('保存成功', '', 'success');
     } catch (e) { Swal.fire('Error', e.message, 'error'); }
 };
-const handleDeleteProduct = async (id) => { if ((await Swal.fire({ title: '删除?', icon: 'warning', showCancelButton: true })).isConfirmed) { await request.delete(`/api/products/${id}`); fetchProducts(); Toast.fire('已删除', '', 'success'); } };
+const handleDeleteProduct = async (id) => {
+    const result = await Swal.fire({
+        title: '确认下架该商品？',
+        text: '下架后将从数据库中永久删除，无法恢复',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: '确认下架',
+        cancelButtonText: '取消'
+    });
+    if (result.isConfirmed) {
+        try {
+            await request.delete(`/api/products/${id}`);
+            fetchProducts();
+            Toast.fire('已下架', '', 'success');
+        } catch (e) {
+            Swal.fire('下架失败', e.message || '系统繁忙', 'error');
+        }
+    }
+};
+
+const toggleCategory = (catName) => {
+    if (expandedCategories.value.has(catName)) {
+        expandedCategories.value.delete(catName);
+    } else {
+        expandedCategories.value.add(catName);
+    }
+};
+
+const fetchStockOverview = async () => {
+    try {
+        const res = await request.get('/api/products/stock-overview');
+        stockOverview.value = res;
+    } catch (e) {
+        console.error('库存总览加载失败', e);
+    }
+};
+
+const fetchRestockReminders = async () => {
+    try {
+        const res = await request.get('/api/products/admin/restock-reminders');
+        restockReminders.value = res || [];
+    } catch (e) {
+        console.error('补货提醒加载失败', e);
+    }
+};
+
+const handleResolveReminder = async (productId) => {
+    const confirm = await Swal.fire({
+        title: '确认已补货？',
+        text: '该商品的所有补货提醒将被标记为已处理',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        confirmButtonText: '确认已补货'
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        await request.post(`/api/products/admin/restock-reminders/${productId}/resolve`);
+        Toast.fire('已标记为已补货', '', 'success');
+        fetchRestockReminders();
+        fetchStockOverview();
+    } catch (e) {
+        Swal.fire('操作失败', e.message || '系统繁忙', 'error');
+    }
+};
+
+const handleActiveRestock = async (p) => {
+    const { value: amountStr } = await Swal.fire({
+        title: `为【${p.name}】补货`,
+        input: 'number',
+        inputLabel: '请输入新增的补货数量',
+        inputPlaceholder: '例如：50',
+        inputValue: 50,
+        showCancelButton: true,
+        confirmButtonColor: '#3b82f6',
+        confirmButtonText: '确定入库',
+        inputValidator: (value) => {
+            if (!value || isNaN(value) || parseInt(value) <= 0) {
+                return '请输入有效的大于0的数量！';
+            }
+        }
+    });
+
+    if (amountStr) {
+        const addAmount = parseInt(amountStr);
+        try {
+            await request.put(`/api/products/${p.id}`, { stock: p.stock + addAmount });
+            
+            if (p.reminderCount > 0) {
+                await request.post(`/api/products/admin/restock-reminders/${p.id}/resolve`).catch(() => {});
+            }
+
+            Toast.fire('补货成功', `已增加 ${addAmount} 件库存`, 'success');
+            fetchStockOverview();
+            fetchRestockReminders();
+        } catch (e) {
+            Swal.fire('操作失败', e.message || '系统繁忙', 'error');
+        }
+    }
+};
+
+const getStockBarColor = (status) => {
+    if (status === 'OUT') return 'bg-red-500';
+    if (status === 'LOW') return 'bg-amber-500';
+    return 'bg-emerald-500';
+};
+
+const getStockBadge = (status) => {
+    if (status === 'OUT') return { text: '缺货', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' };
+    if (status === 'LOW') return { text: '低库存', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
+    return { text: '充足', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' };
+};
+
+const getCategoryIcon = (name) => {
+    const icons = {
+        '鱼类': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 text-blue-500"><path d="M6.5 12c3-7 11-7 14-2-3 5-11 5-14 2z"/><circle cx="17" cy="11.5" r="1" fill="currentColor" stroke="none"/><path d="M2 10l3 2-3 2"/><path d="M10.5 10c1 .5 1.5 1.5 1.5 2.5"/></svg>',
+        '虾类': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 text-orange-500"><path d="M17 4c2 0 4 2 4 4s-2 4-4 4H9"/><path d="M9 12c-2 0-5 2-5 5s2 3 4 3c1 0 2-.5 2.5-1.5"/><path d="M14 12c0 3-1 5-3.5 6.5"/><circle cx="19" cy="7" r="1" fill="currentColor" stroke="none"/><path d="M17 4l2-2M18 5l2.5-1"/></svg>',
+        '蟹类': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 text-red-500"><ellipse cx="12" cy="14" rx="6" ry="4"/><path d="M6 14c-2-1-4-3-4-5M18 14c2-1 4-3 4-5"/><path d="M2 9l1.5 1M22 9l-1.5 1"/><path d="M8 10c0-2 1.5-4 4-4s4 2 4 4"/><circle cx="10" cy="13" r="0.5" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="0.5" fill="currentColor" stroke="none"/></svg>',
+        '贝类': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 text-teal-500"><path d="M12 3C7 3 3 8 3 13c0 3 2 5 4.5 6h9c2.5-1 4.5-3 4.5-6 0-5-4-10-9-10z"/><path d="M12 3v16M8 6c-1 2-2 5-2 8M16 6c1 2 2 5 2 8"/></svg>',
+        '头足类': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 text-purple-500"><ellipse cx="12" cy="8" rx="5" ry="5"/><path d="M7 12c-1 3 0 6 1 9M10 12c0 3-.5 6-1.5 9M14 12c0 3 .5 6 1.5 9M17 12c1 3 0 6-1 9"/><circle cx="10" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="7" r="1" fill="currentColor" stroke="none"/></svg>',
+    };
+    return icons[name] || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 text-slate-400"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>';
+};
 
 const fetchUsers = async () => {
     loading.value = true; users.value = [];
@@ -320,6 +469,7 @@ const switchTab = (tab) => {
     else if (tab === 'products') fetchProducts();
     else if (tab === 'users') fetchUsers();
     else if (tab === 'refund') fetchRefunds();
+    else if (tab === 'inventory') { fetchStockOverview(); fetchRestockReminders(); }
 };
 
 onMounted(() => {
@@ -391,6 +541,15 @@ onUnmounted(() => { if (socket) socket.close(); });
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
                     <span></span><span>用户管理</span>
                 </a>
+
+                <a @click="switchTab('inventory')"
+                    :class="['flex items-center space-x-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 font-medium',
+                        currentTab === 'inventory'
+                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-600 dark:text-white shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200']">
+                    <span></span><span>库存管理</span>
+                    <span v-if="stockOverview.lowStockCount + stockOverview.outOfStockCount > 0" class="ml-auto bg-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold">{{ stockOverview.lowStockCount + stockOverview.outOfStockCount }}</span>
+                </a>
             </nav>
 
             <div class="p-4 border-t border-slate-100 dark:border-slate-800 relative z-10">
@@ -444,7 +603,12 @@ onUnmounted(() => { if (socket) socket.close(); });
 
             <div v-if="currentTab === 'dashboard'" class="animate-fade-in-up space-y-6">
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                    <div v-for="(item, idx) in [{ label: '总销售额', val: '¥' + stats.totalSales.toLocaleString(), icon: '💰', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' }, { label: '待发货订单', val: stats.pendingOrders, icon: '🔔', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' }, { label: '注册用户', val: stats.totalUsers, icon: '👥', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' }, { label: '库存商品', val: stats.totalProducts, icon: '📦', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' }]"
+                    <div v-for="(item, idx) in [
+                        { label: '总销售额', val: '¥' + stats.totalSales.toLocaleString(), svg: '<svg viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; class=&quot;w-6 h-6&quot;><line x1=&quot;12&quot; y1=&quot;1&quot; x2=&quot;12&quot; y2=&quot;23&quot;/><path d=&quot;M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6&quot;/></svg>', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+                        { label: '待发货订单', val: stats.pendingOrders, svg: '<svg viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; class=&quot;w-6 h-6&quot;><path d=&quot;M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9&quot;/><path d=&quot;M13.73 21a2 2 0 01-3.46 0&quot;/></svg>', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+                        { label: '注册用户', val: stats.totalUsers, svg: '<svg viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; class=&quot;w-6 h-6&quot;><path d=&quot;M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2&quot;/><circle cx=&quot;9&quot; cy=&quot;7&quot; r=&quot;4&quot;/><path d=&quot;M23 21v-2a4 4 0 00-3-3.87&quot;/><path d=&quot;M16 3.13a4 4 0 010 7.75&quot;/></svg>', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+                        { label: '库存商品', val: stats.totalProducts, svg: '<svg viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; class=&quot;w-6 h-6&quot;><path d=&quot;M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z&quot;/><path d=&quot;M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12&quot;/></svg>', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' }
+                    ]"
                         :key="idx"
                         class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md transition-shadow">
                         <div class="flex justify-between items-start">
@@ -453,7 +617,7 @@ onUnmounted(() => { if (socket) socket.close(); });
                                 </p>
                                 <h3 class="text-2xl font-black text-slate-800 dark:text-white mt-2">{{ item.val }}</h3>
                             </div>
-                            <span :class="['p-3 rounded-xl text-xl', item.color]">{{ item.icon }}</span>
+                            <span :class="['p-3 rounded-xl', item.color]" v-html="item.svg"></span>
                         </div>
                     </div>
                 </div>
@@ -724,6 +888,198 @@ onUnmounted(() => { if (socket) socket.close(); });
                 </div>
             </div>
 
+            <div v-else-if="currentTab === 'inventory'" class="animate-fade-in-up space-y-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">总库存量</p>
+                                <h3 class="text-2xl font-black text-slate-800 dark:text-white mt-2">{{ stockOverview.totalStock.toLocaleString() }}</h3>
+                            </div>
+                            <span class="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-blue-500"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg></span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">共 {{ stockOverview.totalProducts }} 种商品</p>
+                    </div>
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">低库存预警</p>
+                                <h3 class="text-2xl font-black text-amber-500 mt-2">{{ stockOverview.lowStockCount }}</h3>
+                            </div>
+                            <span class="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-amber-500"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">库存低于 20 件</p>
+                    </div>
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">缺货商品</p>
+                                <h3 class="text-2xl font-black text-red-500 mt-2">{{ stockOverview.outOfStockCount }}</h3>
+                            </div>
+                            <span class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-red-500"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">库存为 0，急需补货</p>
+                    </div>
+                    <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">补货提醒</p>
+                                <h3 class="text-2xl font-black text-purple-500 mt-2">{{ stockOverview.pendingReminders }}</h3>
+                            </div>
+                            <span class="p-3 rounded-xl bg-purple-50 dark:bg-purple-900/20"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-purple-500"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">来自用户的待处理提醒</p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                        <h2 class="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-blue-500"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> 品类库存总览
+                        </h2>
+                        <button @click="expandedCategories.size > 0 ? expandedCategories.clear() : stockOverview.categories.forEach(c => expandedCategories.add(c.name))"
+                            class="text-xs text-blue-600 hover:underline font-bold">
+                            {{ expandedCategories.size > 0 ? '全部收起' : '全部展开' }}
+                        </button>
+                    </div>
+
+                    <div class="divide-y divide-slate-100 dark:divide-slate-800">
+                        <div v-for="cat in stockOverview.categories" :key="cat.name">
+                            <div @click="toggleCategory(cat.name)"
+                                class="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                <div class="flex items-center gap-4">
+                                    <span class="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center flex-shrink-0" v-html="getCategoryIcon(cat.name)"></span>
+                                    <div>
+                                        <h3 class="font-bold text-slate-800 dark:text-white text-lg">{{ cat.name }}</h3>
+                                        <p class="text-xs text-slate-400 mt-0.5">{{ cat.productCount }} 种商品 · 总库存 {{ cat.totalStock }} 件</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span v-if="cat.outOfStockCount > 0" class="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                        {{ cat.outOfStockCount }} 缺货
+                                    </span>
+                                    <span v-if="cat.lowStockCount > 0" class="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                        {{ cat.lowStockCount }} 低库存
+                                    </span>
+                                    <div class="w-32 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden hidden sm:block">
+                                        <div class="h-full rounded-full transition-all duration-700"
+                                            :class="cat.outOfStockCount > 0 ? 'bg-red-500' : cat.lowStockCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'"
+                                            :style="`width: ${Math.min((cat.totalStock / (cat.productCount * 200)) * 100, 100)}%`"></div>
+                                    </div>
+                                    <svg class="w-5 h-5 text-slate-400 transition-transform duration-300"
+                                        :class="expandedCategories.has(cat.name) ? 'rotate-180' : ''"
+                                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <transition name="expand">
+                                <div v-if="expandedCategories.has(cat.name)" class="bg-slate-50/50 dark:bg-slate-800/20">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
+                                        <div v-for="p in cat.products" :key="p.id"
+                                            class="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-100 dark:border-slate-800 hover:shadow-md transition-all duration-300 group">
+                                            <div class="flex items-center gap-3 mb-3">
+                                                <img :src="p.imageUrl" class="w-12 h-12 rounded-lg object-cover border border-slate-100 dark:border-slate-700 flex-shrink-0" />
+                                                <div class="flex-1 min-w-0">
+                                                    <h4 class="font-bold text-sm text-slate-800 dark:text-white truncate">{{ p.name }}</h4>
+                                                    <p class="text-[10px] text-slate-400 truncate">{{ p.origin }}</p>
+                                                </div>
+                                                <span :class="['px-2 py-0.5 rounded-full text-[10px] font-bold', getStockBadge(p.stockStatus).cls]">
+                                                    {{ getStockBadge(p.stockStatus).text }}
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center gap-2 mb-2">
+                                                <div class="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                    <div class="h-full rounded-full transition-all duration-700"
+                                                        :class="getStockBarColor(p.stockStatus)"
+                                                        :style="`width: ${Math.min((p.stock / 200) * 100, 100)}%`"></div>
+                                                </div>
+                                                <span class="text-xs font-mono font-bold min-w-[40px] text-right"
+                                                    :class="p.stockStatus === 'OUT' ? 'text-red-500' : p.stockStatus === 'LOW' ? 'text-amber-500' : 'text-slate-600 dark:text-slate-300'">
+                                                    {{ p.stock }}
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center justify-between mt-1">
+                                                <div class="flex flex-col">
+                                                    <span class="text-xs text-orange-500 font-mono font-bold">¥{{ p.price }}</span>
+                                                    <div v-if="p.reminderCount > 0" class="flex items-center gap-1 text-[10px] text-purple-500 font-bold mt-1">
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 text-purple-500"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                                                        <span>{{ p.reminderCount }} 人催补</span>
+                                                    </div>
+                                                </div>
+                                                <button @click.stop="handleActiveRestock(p)" class="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                                    补货
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </transition>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="restockReminders.length > 0"
+                    class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                        <h2 class="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-purple-500"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> 用户补货提醒
+                            <span class="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                {{ restockReminders.length }} 个商品待处理
+                            </span>
+                        </h2>
+                    </div>
+                    <div class="divide-y divide-slate-100 dark:divide-slate-800">
+                        <div v-for="item in restockReminders" :key="item.productId"
+                            class="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <div class="flex items-center gap-3 flex-1 min-w-0">
+                                <img :src="item.imageUrl" class="w-14 h-14 rounded-xl object-cover border border-slate-100 dark:border-slate-700 flex-shrink-0" />
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                        <h4 class="font-bold text-slate-800 dark:text-white truncate">{{ item.productName }}</h4>
+                                        <span class="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] px-2 py-0.5 rounded">{{ item.category }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-xs text-slate-400">
+                                        <span>当前库存: <b class="text-red-500">{{ item.currentStock }}</b></span>
+                                        <span>·</span>
+                                        <span class="text-purple-500 font-bold">{{ item.reminderCount }} 位用户催补</span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1 mt-2">
+                                        <span v-for="r in item.reminders.slice(0, 5)" :key="r.id"
+                                            class="bg-slate-100 dark:bg-slate-800 text-[10px] px-2 py-0.5 rounded-full text-slate-500">
+                                            {{ r.username }} · {{ new Date(r.createTime).toLocaleDateString() }}
+                                        </span>
+                                        <span v-if="item.reminders.length > 5"
+                                            class="bg-slate-100 dark:bg-slate-800 text-[10px] px-2 py-0.5 rounded-full text-slate-500">
+                                            +{{ item.reminders.length - 5 }} 更多
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 flex-shrink-0">
+                                <button @click="openProductModal(products.find(p => p.id === item.productId) || { id: item.productId, name: item.productName, stock: item.currentStock })"
+                                    class="px-4 py-2 text-xs font-bold border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-900/20 transition">
+                                    修改库存
+                                </button>
+                                <button @click="handleResolveReminder(item.productId)"
+                                    class="px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition">
+                                    已补货 ✓
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="restockReminders.length === 0 && stockOverview.categories.length > 0"
+                    class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-12 text-center">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-emerald-500"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+                    <h3 class="text-lg font-bold text-slate-600 dark:text-slate-300 mb-1">暂无补货提醒</h3>
+                    <p class="text-sm text-slate-400">当用户发现库存不足时会向您发送提醒</p>
+                </div>
+            </div>
+
             <Teleport to="body">
                 <div v-if="showProductModal"
                     class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -734,19 +1090,37 @@ onUnmounted(() => { if (socket) socket.close(); });
                                 class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                                 placeholder="商品名称">
                             <div class="grid grid-cols-2 gap-4">
-                                <input v-model="editingProduct.price"
+                                <select v-model="editingProduct.category"
+                                    class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white appearance-none">
+                                    <option value="鱼类">鱼类</option>
+                                    <option value="虾类">虾类</option>
+                                    <option value="蟹类">蟹类</option>
+                                    <option value="贝类">贝类</option>
+                                    <option value="头足类">头足类</option>
+                                </select>
+                                <input v-model="editingProduct.origin"
+                                    class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                    placeholder="产地（如:舟山/进口）">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <input v-model="editingProduct.price" type="number" step="0.01"
                                     class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                                     placeholder="价格">
-                                <input v-model="editingProduct.stock"
+                                <input v-model="editingProduct.stock" type="number"
                                     class="p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                                     placeholder="库存">
                             </div>
                             <input v-model="editingProduct.imageUrl"
                                 class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                placeholder="图片URL">
-                            <textarea v-model="editingProduct.description"
-                                class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                                placeholder="描述"></textarea>
+                                placeholder="图片URL（如: /images/xxx.jpg 或 https://...)"
+                            >
+                            <div v-if="editingProduct.imageUrl" class="flex items-center gap-3">
+                                <img :src="editingProduct.imageUrl" class="w-16 h-16 rounded-lg object-cover border dark:border-slate-700" @error="$event.target.style.display='none'">
+                                <span class="text-xs text-slate-400">图片预览</span>
+                            </div>
+                            <textarea v-model="editingProduct.description" rows="3"
+                                class="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white resize-none"
+                                placeholder="商品描述"></textarea>
                         </div>
                         <div class="flex justify-end gap-3 mt-6">
                             <button @click="showProductModal = false"
@@ -844,5 +1218,23 @@ onUnmounted(() => { if (socket) socket.close(); });
         opacity: 1;
         transform: scale(1);
     }
+}
+
+.expand-enter-active,
+.expand-leave-active {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+    opacity: 0;
+    max-height: 0;
+}
+
+.expand-enter-to,
+.expand-leave-from {
+    opacity: 1;
+    max-height: 2000px;
 }
 </style>

@@ -49,7 +49,7 @@ const handleRegister = async () => {
 
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-2">
-            会员名
+            账号
           </label>
           <input v-model="form.username" type="text" required
             class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition font-mono text-sm">

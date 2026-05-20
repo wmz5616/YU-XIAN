@@ -61,10 +61,10 @@ const handleLogin = async () => {
       <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
         <div class="rounded-md shadow-sm space-y-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">用户名</label>
+            <label class="block text-sm font-medium text-slate-700 mb-1">账号</label>
             <input v-model="form.username" type="text" required
               class="appearance-none rounded-xl relative block w-full px-4 py-3 border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm transition bg-slate-50"
-              placeholder="请输入用户名">
+              placeholder="请输入账号">
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">密码</label>

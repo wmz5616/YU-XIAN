@@ -3,16 +3,22 @@ package com.yuxian.backend.controller;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.stream.Collectors;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import com.yuxian.backend.entity.OrderRecord;
 import com.yuxian.backend.entity.Product;
+import com.yuxian.backend.entity.RestockReminder;
 import com.yuxian.backend.entity.User;
 import com.yuxian.backend.repository.ProductRepository;
+import com.yuxian.backend.repository.RestockReminderRepository;
 import com.yuxian.backend.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +31,7 @@ public class ProductController {
     private final ProductRepository productRepository;
     private final com.yuxian.backend.repository.OrderRepository orderRepository;
     private final UserRepository userRepository;
+    private final RestockReminderRepository restockReminderRepository;
 
     private final OrderService orderService;
 
@@ -46,10 +53,12 @@ public class ProductController {
     public ProductController(ProductRepository productRepository,
             com.yuxian.backend.repository.OrderRepository orderRepository,
             UserRepository userRepository,
+            RestockReminderRepository restockReminderRepository,
             OrderService orderService) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
+        this.restockReminderRepository = restockReminderRepository;
         this.orderService = orderService;
     }
 
@@ -71,6 +80,47 @@ public class ProductController {
     @GetMapping("/{id}")
     public Product getProductById(@PathVariable Long id) {
         return productRepository.findById(id).orElse(null);
+    }
+
+    @PostMapping
+    public ResponseEntity<?> createProduct(@RequestBody Product product) {
+        product.setId(null);
+        if (product.getListDate() == null) {
+            product.setListDate(LocalDate.now());
+        }
+        Product saved = productRepository.save(product);
+        return ResponseEntity.ok(saved);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product product) {
+        Product existing = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("商品不存在"));
+
+        if (product.getName() != null) existing.setName(product.getName());
+        if (product.getPrice() != null) existing.setPrice(product.getPrice());
+        if (product.getStock() != null) existing.setStock(product.getStock());
+        if (product.getImageUrl() != null) existing.setImageUrl(product.getImageUrl());
+        if (product.getDescription() != null) existing.setDescription(product.getDescription());
+        if (product.getCategory() != null) existing.setCategory(product.getCategory());
+        if (product.getOrigin() != null) existing.setOrigin(product.getOrigin());
+
+        Product saved = productRepository.save(existing);
+        return ResponseEntity.ok(saved);
+    }
+
+    @DeleteMapping("/{id}")
+    @Transactional
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
+        if (!productRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        restockReminderRepository.deleteAll(
+                restockReminderRepository.findByStatusOrderByCreateTimeDesc("PENDING").stream()
+                        .filter(r -> r.getProductId().equals(id))
+                        .toList());
+        productRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "商品已下架"));
     }
 
     @GetMapping("/{id}/insight")
@@ -240,5 +290,208 @@ public class ProductController {
     @GetMapping("/recommend")
     public List<Product> getDailyRecommendations() {
         return productRepository.findRandomRecommendations();
+    }
+
+    @GetMapping("/stock-overview")
+    public ResponseEntity<?> getStockOverview() {
+        List<Product> allProducts = productRepository.findAll();
+
+        Map<String, String> categoryIcons = new LinkedHashMap<>();
+        categoryIcons.put("鱼类", "🐟");
+        categoryIcons.put("虾类", "🦐");
+        categoryIcons.put("蟹类", "🦀");
+        categoryIcons.put("贝类", "🐚");
+        categoryIcons.put("头足类", "🦑");
+
+        Map<Long, Long> reminderCounts = new HashMap<>();
+        List<Object[]> rawCounts = restockReminderRepository.countPendingGroupByProduct();
+        for (Object[] row : rawCounts) {
+            reminderCounts.put((Long) row[0], (Long) row[1]);
+        }
+
+        List<Map<String, Object>> categories = new ArrayList<>();
+        Map<String, List<Product>> grouped = allProducts.stream()
+                .collect(Collectors.groupingBy(
+                        p -> p.getCategory() != null ? p.getCategory() : "其他",
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        int totalStock = 0;
+        int lowStockCount = 0;
+        int outOfStockCount = 0;
+
+        for (Map.Entry<String, List<Product>> entry : grouped.entrySet()) {
+            String cat = entry.getKey();
+            List<Product> products = entry.getValue();
+
+            Map<String, Object> catInfo = new HashMap<>();
+            catInfo.put("name", cat);
+            catInfo.put("icon", categoryIcons.getOrDefault(cat, "📦"));
+            catInfo.put("productCount", products.size());
+
+            int catTotalStock = 0;
+            int catLowStock = 0;
+            int catOutOfStock = 0;
+
+            List<Map<String, Object>> productItems = new ArrayList<>();
+            for (Product p : products) {
+                int stock = p.getStock() != null ? p.getStock() : 0;
+                catTotalStock += stock;
+                if (stock == 0) catOutOfStock++;
+                else if (stock < 20) catLowStock++;
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", p.getId());
+                item.put("name", p.getName());
+                item.put("stock", stock);
+                item.put("price", p.getPrice());
+                item.put("imageUrl", p.getImageUrl());
+                item.put("origin", p.getOrigin());
+                item.put("reminderCount", reminderCounts.getOrDefault(p.getId(), 0L));
+
+                String stockStatus;
+                if (stock == 0) stockStatus = "OUT";
+                else if (stock < 20) stockStatus = "LOW";
+                else stockStatus = "NORMAL";
+                item.put("stockStatus", stockStatus);
+
+                productItems.add(item);
+            }
+
+            productItems.sort((a, b) -> Integer.compare(
+                    (int) a.get("stock"), (int) b.get("stock")));
+
+            catInfo.put("totalStock", catTotalStock);
+            catInfo.put("lowStockCount", catLowStock);
+            catInfo.put("outOfStockCount", catOutOfStock);
+            catInfo.put("products", productItems);
+            categories.add(catInfo);
+
+            totalStock += catTotalStock;
+            lowStockCount += catLowStock;
+            outOfStockCount += catOutOfStock;
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("categories", categories);
+        result.put("totalProducts", allProducts.size());
+        result.put("totalStock", totalStock);
+        result.put("lowStockCount", lowStockCount);
+        result.put("outOfStockCount", outOfStockCount);
+        result.put("pendingReminders", restockReminderRepository.findByStatusOrderByCreateTimeDesc("PENDING").size());
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/restock-remind")
+    public ResponseEntity<?> submitRestockReminder(@PathVariable Long id) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        Product product = productRepository.findById(id).orElse(null);
+        if (product == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "商品不存在"));
+        }
+
+        boolean alreadyReminded = restockReminderRepository
+                .existsByProductIdAndUsernameAndStatus(id, username, "PENDING");
+        if (alreadyReminded) {
+            return ResponseEntity.badRequest().body(Map.of("message", "您已提交过该商品的补货提醒，商家已收到通知"));
+        }
+
+        RestockReminder reminder = new RestockReminder();
+        reminder.setProductId(id);
+        reminder.setProductName(product.getName());
+        reminder.setUsername(username);
+        reminder.setCategory(product.getCategory());
+        reminder.setCurrentStock(product.getStock());
+        restockReminderRepository.save(reminder);
+
+        long totalReminders = restockReminderRepository.countByProductIdAndStatus(id, "PENDING");
+
+        try {
+            com.yuxian.backend.service.WebSocketServer.sendInfo("RESTOCK_REMIND");
+        } catch (Exception e) {
+            System.err.println("WebSocket推送补货提醒失败: " + e.getMessage());
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "补货提醒已发送给商家！",
+                "totalReminders", totalReminders));
+    }
+
+    @GetMapping("/{id}/reminder-count")
+    public ResponseEntity<?> getReminderCount(@PathVariable Long id) {
+        long count = restockReminderRepository.countByProductIdAndStatus(id, "PENDING");
+
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        boolean hasReminded = restockReminderRepository
+                .existsByProductIdAndUsernameAndStatus(id, username, "PENDING");
+
+        return ResponseEntity.ok(Map.of(
+                "count", count,
+                "hasReminded", hasReminded));
+    }
+
+    @GetMapping("/admin/restock-reminders")
+    public ResponseEntity<?> getRestockReminders() {
+        List<RestockReminder> reminders = restockReminderRepository.findAllByOrderByCreateTimeDesc();
+
+        Map<Long, Long> pendingCounts = new HashMap<>();
+        List<Object[]> rawCounts = restockReminderRepository.countPendingGroupByProduct();
+        for (Object[] row : rawCounts) {
+            pendingCounts.put((Long) row[0], (Long) row[1]);
+        }
+
+        Map<Long, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        for (RestockReminder r : reminders) {
+            if (!"PENDING".equals(r.getStatus())) continue;
+            grouped.computeIfAbsent(r.getProductId(), k -> new ArrayList<>()).add(Map.of(
+                    "id", r.getId(),
+                    "username", r.getUsername(),
+                    "currentStock", r.getCurrentStock(),
+                    "createTime", r.getCreateTime().toString()));
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<Long, List<Map<String, Object>>> entry : grouped.entrySet()) {
+            Long productId = entry.getKey();
+            Product product = productRepository.findById(productId).orElse(null);
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("productId", productId);
+            item.put("productName", product != null ? product.getName() : "已下架");
+            item.put("category", product != null ? product.getCategory() : "未知");
+            item.put("currentStock", product != null ? product.getStock() : 0);
+            item.put("imageUrl", product != null ? product.getImageUrl() : "");
+            item.put("reminderCount", pendingCounts.getOrDefault(productId, 0L));
+            item.put("reminders", entry.getValue());
+            result.add(item);
+        }
+
+        result.sort((a, b) -> Long.compare(
+                (long) b.get("reminderCount"), (long) a.get("reminderCount")));
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/admin/restock-reminders/{productId}/resolve")
+    @Transactional
+    public ResponseEntity<?> resolveRestockReminders(@PathVariable Long productId) {
+        List<RestockReminder> pending = restockReminderRepository.findByStatusOrderByCreateTimeDesc("PENDING")
+                .stream()
+                .filter(r -> r.getProductId().equals(productId))
+                .collect(Collectors.toList());
+
+        for (RestockReminder r : pending) {
+            r.setStatus("RESOLVED");
+            r.setResolveTime(LocalDateTime.now());
+        }
+        restockReminderRepository.saveAll(pending);
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "已处理 " + pending.size() + " 条补货提醒",
+                "resolvedCount", pending.size()));
     }
 }

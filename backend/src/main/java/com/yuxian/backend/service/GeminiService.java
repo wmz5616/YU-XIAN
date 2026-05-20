@@ -109,9 +109,12 @@ public class GeminiService {
                 }
             }
             return "（思考中...）";
-        } catch (HttpClientErrorException e) {
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
             String errorMsg = e.getResponseBodyAsString();
-            System.err.println("Gemini Error: " + errorMsg);
+            System.err.println("Gemini API Error: " + errorMsg);
+            if (e.getStatusCode().value() == 503 || errorMsg.contains("high demand") || errorMsg.contains("UNAVAILABLE")) {
+                return "AI 服务当前非常繁忙（请求量过大），请稍后再试。";
+            }
             if (errorMsg.contains("not found")) {
                 return "API Error: 模型路径未找到 (404)。请确认您的 Key 是否支持 1.5-flash 或尝试更换为 v1 接口。";
             }
